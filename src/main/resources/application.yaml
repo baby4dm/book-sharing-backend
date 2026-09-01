@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: book-sharing-backend
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/bookshare-db
+    username: root
+    password: root
+
+  jpa:
+    hibernate:
+      ddl-auto: validate   # схему створюють SQL-скрипти в docker/db, Hibernate лише звіряє відповідність
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            scope: openid,profile,email
+
+# Власні JWT, що видаються після успішного логіну через Google (див. security-модуль).
+# secret МАЄ бути щонайменше 32 символи (256 біт) для HS256 - без цього jjwt кине WeakKeyException.
+# Для проду - обов'язково винести в змінну середовища, значення нижче лише для локальної розробки.
+app:
+  jwt:
+    secret: dev-only-insecure-secret-change-me-32chars-min
+    expiration-minutes: 60
+  frontend:
+    base-url: http://localhost:5173
+    oauth2-redirect-path: /oauth-callback
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
