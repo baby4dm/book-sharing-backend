@@ -1,7 +1,7 @@
 package com.booksharing.security;
 
-import com.booksharing.model.user.User;
-import com.booksharing.model.user.UserRepository;
+import com.booksharing.entity.User;
+import com.booksharing.repository.UserRepository;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;

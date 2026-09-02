@@ -1,9 +1,9 @@
 package com.booksharing.security;
 
-import com.booksharing.model.user.User;
-import com.booksharing.model.user.UserRepository;
-import com.booksharing.model.user.UserRole;
-import com.booksharing.model.user.UserStatus;
+import com.booksharing.entity.User;
+import com.booksharing.repository.UserRepository;
+import com.booksharing.enums.UserRole;
+import com.booksharing.enums.UserStatus;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;

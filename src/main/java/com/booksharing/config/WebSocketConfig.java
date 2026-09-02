@@ -1,5 +1,6 @@
 package com.booksharing.config;
 
+import com.booksharing.controller.ChatWebSocketController;
 import com.booksharing.security.StompAuthChannelInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,7 +14,7 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 /**
  * Клієнт підключається на {@code /ws}, шле повідомлення на
  * {@code /app/chat/{chatRoomId}/send} (обробляє {@link
- * com.booksharing.model.chat.ChatWebSocketController}), отримує їх на
+ * ChatWebSocketController}), отримує їх на
  * {@code /topic/chat/{chatRoomId}}.
  */
 @Configuration
