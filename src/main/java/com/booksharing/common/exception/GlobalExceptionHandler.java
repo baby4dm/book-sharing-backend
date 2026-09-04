@@ -37,23 +37,24 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ErrorResponse handleIllegalArgument(IllegalArgumentException ex) {
-        // для помилок валідації вхідних даних, які не покриває @Valid
-        // (напр. невідоме значення enum, передане як рядок)
         return ErrorResponse.of(ex.getMessage(), HttpStatus.BAD_REQUEST.value());
     }
 
     @ExceptionHandler(AccessDeniedException.class)
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public ErrorResponse handleAccessDenied(AccessDeniedException ex) {
-        // напр. спроба редагувати чужий Listing
         return ErrorResponse.of("Немає доступу до цієї дії", HttpStatus.FORBIDDEN.value());
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ErrorResponse handleInvalidCredentials(InvalidCredentialsException ex) {
+        return ErrorResponse.of(ex.getMessage(), HttpStatus.UNAUTHORIZED.value());
     }
 
     @ExceptionHandler(IllegalStateException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ErrorResponse handleIllegalState(IllegalStateException ex) {
-        // для порушень бізнес-логіки (напр. "заявка вже підтверджена") -
-        // сервісний шар кидатиме саме це, а не власні кастомні винятки на кожен випадок
         return ErrorResponse.of(ex.getMessage(), HttpStatus.CONFLICT.value());
     }
 
