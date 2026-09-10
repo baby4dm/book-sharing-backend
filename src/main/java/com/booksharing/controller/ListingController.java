@@ -11,6 +11,9 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -32,13 +35,14 @@ public class ListingController {
     private final ListingService listingService;
 
     @GetMapping
-    public List<ListingResponse> search(
+    public Page<ListingResponse> search(
             @RequestParam(required = false) String genre,
             @RequestParam(required = false) String city,
             @RequestParam(required = false) String deliveryMethod,
             @RequestParam(required = false) ListingStatus status,
-            @RequestParam(required = false) String search) {
-        return listingService.search(genre, city, deliveryMethod, status, search);
+            @RequestParam(required = false) String search,
+            @PageableDefault(size = 12) Pageable pageable) {
+        return listingService.search(genre, city, deliveryMethod, status, search, pageable);
     }
 
     @GetMapping("/{id}")

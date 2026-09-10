@@ -21,6 +21,9 @@ import java.util.UUID;
 import com.booksharing.repository.ListingPhotoRepository;
 import com.booksharing.repository.ListingRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -68,27 +71,43 @@ public class ListingService {
         return listingMapper.toResponse(listing, photoUrlsOf(id));
     }
 
-    public List<ListingResponse> search(String genre, String city, String deliveryMethod,
-                                        ListingStatus status, String searchText) {
+    /**
+     * Пагінація роздвоюється навмисно: коли {@code deliveryMethod} не
+     * заданий - фільтри повністю на рівні БД через {@code Specification},
+     * і LIMIT/OFFSET теж рахує сама БД (ефективний шлях). Коли
+     * {@code deliveryMethod} заданий - його фільтр застосовується в Java
+     * (text[] не фільтрується через Specification, див. коментар у
+     * {@link ListingSpecifications}), тому LIMIT/OFFSET на рівні БД
+     * "відрізав" би елементи ДО цього java-фільтра і зламав би підрахунок
+     * сторінок - тому в цьому випадку пагінація теж рахується вручну,
+     * вже після фільтра.
+     */
+    public Page<ListingResponse> search(String genre, String city, String deliveryMethod,
+                                        ListingStatus status, String searchText, Pageable pageable) {
         Specification<Listing> spec = Specification
                 .where(ListingSpecifications.hasStatus(status))
                 .and(ListingSpecifications.hasGenre(genre))
                 .and(ListingSpecifications.hasOwnerCity(city))
                 .and(ListingSpecifications.matchesSearch(searchText));
 
-        List<Listing> listings = listingRepository.findAll(spec);
-
-        // фільтр за способом доставки - у Java, не в SQL (див. коментар
-        // у ListingSpecifications)
-        if (deliveryMethod != null && !deliveryMethod.isBlank()) {
-            listings = listings.stream()
-                    .filter(l -> l.getDeliveryMethods().contains(deliveryMethod))
-                    .toList();
+        if (deliveryMethod == null || deliveryMethod.isBlank()) {
+            return listingRepository.findAll(spec, pageable)
+                    .map(l -> listingMapper.toResponse(l, photoUrlsOf(l.getId())));
         }
 
-        return listings.stream()
+        List<Listing> filtered = listingRepository.findAll(spec).stream()
+                .filter(l -> l.getDeliveryMethods().contains(deliveryMethod))
+                .toList();
+
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), filtered.size());
+        List<ListingResponse> pageContent = start >= filtered.size()
+                ? List.of()
+                : filtered.subList(start, end).stream()
                 .map(l -> listingMapper.toResponse(l, photoUrlsOf(l.getId())))
                 .toList();
+
+        return new PageImpl<>(pageContent, pageable, filtered.size());
     }
 
     @Transactional
