@@ -53,6 +53,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/ws/**").permitAll()
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         // публічний перегляд без автентифікації: стрічка оголошень і постів
                         .requestMatchers(HttpMethod.GET, "/api/listings/**", "/api/posts/**").permitAll()
                         .anyRequest().authenticated())
