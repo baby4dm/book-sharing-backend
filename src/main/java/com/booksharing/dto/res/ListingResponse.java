@@ -20,6 +20,7 @@ public record ListingResponse(
         UUID ownerId,
         String ownerName,
         String ownerAvatarUrl,
+        String ownerCity,
         BigDecimal ownerRatingAvg,
         UUID bookCatalogEntryId,
         String bookTitle,

@@ -20,6 +20,7 @@ public interface ListingMapper {
     @Mapping(target = "ownerId", source = "listing.owner.id")
     @Mapping(target = "ownerName", source = "listing.owner.name")
     @Mapping(target = "ownerAvatarUrl", source = "listing.owner.avatarUrl")
+    @Mapping(target = "ownerCity", source = "listing.owner.city")
     @Mapping(target = "ownerRatingAvg", source = "listing.owner.ratingAvg")
     @Mapping(target = "bookCatalogEntryId", source = "listing.bookCatalogEntry.id")
     @Mapping(target = "bookTitle", source = "listing.bookCatalogEntry.title")
