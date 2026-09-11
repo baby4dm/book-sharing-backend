@@ -66,6 +66,7 @@ public class ListingService {
         return listingMapper.toResponse(listing, photoUrls);
     }
 
+    @Transactional(readOnly = true)
     public ListingResponse getById(UUID id) {
         Listing listing = findListingOrThrow(id);
         return listingMapper.toResponse(listing, photoUrlsOf(id));
@@ -82,6 +83,7 @@ public class ListingService {
      * сторінок - тому в цьому випадку пагінація теж рахується вручну,
      * вже після фільтра.
      */
+    @Transactional(readOnly = true)
     public Page<ListingResponse> search(String genre, String city, String deliveryMethod,
                                         ListingStatus status, String searchText, Pageable pageable) {
         Specification<Listing> spec = Specification
