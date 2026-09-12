@@ -97,7 +97,10 @@ public class ListingService {
                     .map(l -> listingMapper.toResponse(l, photoUrlsOf(l.getId())));
         }
 
-        List<Listing> filtered = listingRepository.findAll(spec).stream()
+        // сортування рахуємо на рівні БД (ORDER BY) навіть тут - фільтр
+        // по deliveryMethod далі тільки ВИДАЛЯЄ елементи, не переставляє
+        // їх, тому порядок, заданий сортуванням, лишається правильним
+        List<Listing> filtered = listingRepository.findAll(spec, pageable.getSort()).stream()
                 .filter(l -> l.getDeliveryMethods().contains(deliveryMethod))
                 .toList();
 
