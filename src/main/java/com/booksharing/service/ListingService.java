@@ -54,6 +54,9 @@ public class ListingService {
                 .bookCatalogEntry(book)
                 .conditionDescription(request.conditionDescription())
                 .deliveryMethods(request.deliveryMethods())
+                .settlementType(request.settlementType())
+                .region(request.region())
+                .settlementName(request.settlementName())
                 .status(ListingStatus.AVAILABLE)
                 .build();
         listing = listingRepository.save(listing);
@@ -84,12 +87,12 @@ public class ListingService {
      * вже після фільтра.
      */
     @Transactional(readOnly = true)
-    public Page<ListingResponse> search(String genre, String city, String deliveryMethod,
+    public Page<ListingResponse> search(List<String> genre, List<String> city, String deliveryMethod,
                                         ListingStatus status, String searchText, Pageable pageable) {
         Specification<Listing> spec = Specification
                 .where(ListingSpecifications.hasStatus(status))
                 .and(ListingSpecifications.hasGenre(genre))
-                .and(ListingSpecifications.hasOwnerCity(city))
+                .and(ListingSpecifications.hasSettlement(city))
                 .and(ListingSpecifications.matchesSearch(searchText));
 
         if (deliveryMethod == null || deliveryMethod.isBlank()) {
@@ -133,6 +136,11 @@ public class ListingService {
         if (request.deliveryMethods() != null) {
             validateDeliveryMethods(request.deliveryMethods());
             listing.setDeliveryMethods(request.deliveryMethods());
+        }
+        if (request.settlementName() != null) {
+            listing.setSettlementType(request.settlementType());
+            listing.setRegion(request.region());
+            listing.setSettlementName(request.settlementName());
         }
 
         listing = listingRepository.save(listing);

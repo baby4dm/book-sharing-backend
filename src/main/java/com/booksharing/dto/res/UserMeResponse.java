@@ -1,5 +1,6 @@
 package com.booksharing.dto.res;
 
+import com.booksharing.enums.SettlementType;
 import com.booksharing.enums.UserRole;
 import com.booksharing.enums.UserStatus;
 
@@ -16,7 +17,9 @@ public record UserMeResponse(
         String email,
         String name,
         String avatarUrl,
-        String city,
+        SettlementType settlementType,
+        String region,
+        String settlementName,
         String bio,
         BigDecimal ratingAvg,
         Integer booksTaken,

@@ -1,5 +1,6 @@
 package com.booksharing.entity;
 
+import com.booksharing.enums.SettlementType;
 import com.booksharing.enums.UserRole;
 import com.booksharing.enums.UserStatus;
 import jakarta.persistence.Column;
@@ -52,7 +53,15 @@ public class User {
     @Column(name = "avatar_url", length = 512)
     private String avatarUrl;
 
-    private String city;
+    @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    @Column(name = "settlement_type", columnDefinition = "settlement_type")
+    private SettlementType settlementType;
+
+    private String region;
+
+    @Column(name = "settlement_name")
+    private String settlementName;
 
     @Column(columnDefinition = "text")
     private String bio;

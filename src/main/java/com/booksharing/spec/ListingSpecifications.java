@@ -3,6 +3,7 @@ package com.booksharing.spec;
 import com.booksharing.entity.Listing;
 import com.booksharing.enums.ListingStatus;
 import com.booksharing.service.ListingService;
+import java.util.List;
 import org.springframework.data.jpa.domain.Specification;
 
 /**
@@ -24,21 +25,38 @@ public final class ListingSpecifications {
                 status == null ? null : cb.equal(root.get("status"), status);
     }
 
-    public static Specification<Listing> hasGenre(String genre) {
+    /**
+     * IN-фільтр, не рівність - дозволяє обрати кілька жанрів одночасно
+     * (наприклад, "Фантастика" І "Фентезі" разом, логіка АБО між ними).
+     * cb.lower() з обох боків - регістронезалежне порівняння, як і було
+     * до переходу на мультивибір.
+     */
+    public static Specification<Listing> hasGenre(List<String> genres) {
         return (root, query, cb) -> {
-            if (genre == null || genre.isBlank()) {
+            if (genres == null || genres.isEmpty()) {
                 return null;
             }
-            return cb.equal(cb.lower(root.get("bookCatalogEntry").get("genre")), genre.toLowerCase());
+            List<String> lowerGenres = genres.stream().map(String::toLowerCase).toList();
+            return cb.lower(root.get("bookCatalogEntry").get("genre")).in(lowerGenres);
         };
     }
 
-    public static Specification<Listing> hasOwnerCity(String city) {
+    /**
+     * Фільтрує за ЕФЕКТИВНим населеним пунктом - той самий COALESCE, що
+     * рахує {@link com.booksharing.mapper.ListingMapper} (власний override
+     * оголошення, якщо є, інакше - населений пункт власника). Інакше
+     * оголошення з override загубилось би у фільтрі за старим містом
+     * власника, хоча реально показується під новим.
+     */
+    public static Specification<Listing> hasSettlement(List<String> settlementNames) {
         return (root, query, cb) -> {
-            if (city == null || city.isBlank()) {
+            if (settlementNames == null || settlementNames.isEmpty()) {
                 return null;
             }
-            return cb.equal(cb.lower(root.get("owner").get("city")), city.toLowerCase());
+            List<String> lowerNames = settlementNames.stream().map(String::toLowerCase).toList();
+            var effectiveSettlement = cb.coalesce(
+                    root.<String>get("settlementName"), root.get("owner").<String>get("settlementName"));
+            return cb.lower(effectiveSettlement).in(lowerNames);
         };
     }
 

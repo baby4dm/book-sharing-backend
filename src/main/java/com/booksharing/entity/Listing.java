@@ -2,6 +2,7 @@ package com.booksharing.entity;
 
 import com.booksharing.enums.DeliveryMethod;
 import com.booksharing.enums.ListingStatus;
+import com.booksharing.enums.SettlementType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -63,6 +64,23 @@ public class Listing {
 
     @Column(name = "condition_description", columnDefinition = "text")
     private String conditionDescription;
+
+    /**
+     * Опційний override локації - усі три поля nullable. {@code null}
+     * означає "використовувати населений пункт із профілю власника";
+     * заповнене - власник явно вказав ІНШЕ місце саме для цього
+     * оголошення (книга в іншому місті, тимчасове перебування тощо).
+     * Обчислення "ефективної" локації - у {@link com.booksharing.mapper.ListingMapper}.
+     */
+    @Enumerated(EnumType.STRING)
+    @JdbcType(PostgreSQLEnumJdbcType.class)
+    @Column(name = "settlement_type", columnDefinition = "settlement_type")
+    private SettlementType settlementType;
+
+    private String region;
+
+    @Column(name = "settlement_name")
+    private String settlementName;
 
     @JdbcTypeCode(SqlTypes.ARRAY)
     @Column(name = "delivery_methods", columnDefinition = "text[]", nullable = false)

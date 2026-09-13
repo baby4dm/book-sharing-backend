@@ -1,5 +1,7 @@
 package com.booksharing.dto.res;
 
+import com.booksharing.enums.SettlementType;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -13,7 +15,9 @@ public record UserPublicProfileResponse(
         UUID id,
         String name,
         String avatarUrl,
-        String city,
+        SettlementType settlementType,
+        String region,
+        String settlementName,
         String bio,
         BigDecimal ratingAvg,
         Integer booksTaken,

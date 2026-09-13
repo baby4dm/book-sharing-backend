@@ -36,8 +36,8 @@ public class ListingController {
 
     @GetMapping
     public Page<ListingResponse> search(
-            @RequestParam(required = false) String genre,
-            @RequestParam(required = false) String city,
+            @RequestParam(required = false) List<String> genre,
+            @RequestParam(required = false) List<String> city,
             @RequestParam(required = false) String deliveryMethod,
             @RequestParam(required = false) ListingStatus status,
             @RequestParam(required = false) String search,

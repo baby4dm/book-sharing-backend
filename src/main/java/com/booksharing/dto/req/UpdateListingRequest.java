@@ -1,6 +1,7 @@
 package com.booksharing.dto.req;
 
 import com.booksharing.enums.ListingStatus;
+import com.booksharing.enums.SettlementType;
 import com.booksharing.service.ListingService;
 import jakarta.validation.constraints.Size;
 import java.util.List;
@@ -15,5 +16,8 @@ import java.util.List;
 public record UpdateListingRequest(
         @Size(max = 2000) String conditionDescription,
         List<String> deliveryMethods,
-        ListingStatus status) {
+        ListingStatus status,
+        SettlementType settlementType,
+        @Size(max = 255) String region,
+        @Size(max = 255) String settlementName) {
 }

@@ -1,5 +1,6 @@
 package com.booksharing.dto.req;
 
+import com.booksharing.enums.SettlementType;
 import com.booksharing.mapper.UserMapper;
 import jakarta.validation.constraints.Size;
 
@@ -17,8 +18,13 @@ public record UpdateUserProfileRequest(
         @Size(max = 512, message = "URL аватара занадто довгий")
         String avatarUrl,
 
-        @Size(max = 255, message = "Назва міста занадто довга")
-        String city,
+        SettlementType settlementType,
+
+        @Size(max = 255, message = "Назва області занадто довга")
+        String region,
+
+        @Size(max = 255, message = "Назва населеного пункту занадто довга")
+        String settlementName,
 
         @Size(max = 2000, message = "Опис про себе занадто довгий")
         String bio) {

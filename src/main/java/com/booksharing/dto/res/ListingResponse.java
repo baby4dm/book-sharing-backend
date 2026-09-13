@@ -2,6 +2,7 @@ package com.booksharing.dto.res;
 
 import com.booksharing.mapper.ListingMapper;
 import com.booksharing.enums.ListingStatus;
+import com.booksharing.enums.SettlementType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -14,13 +15,20 @@ import java.util.UUID;
  * {@code photoUrls} підвантажується сервісом окремо (у {@code Listing}
  * немає навігаційної колекції на {@code ListingPhoto} — див. коментар
  * у {@link ListingMapper}).
+ * <p>
+ * {@code settlementType}/{@code region}/{@code settlementName} - це
+ * ЕФЕКТИВНА локація (власний override оголошення, якщо є, інакше -
+ * населений пункт власника) - {@link ListingMapper} рахує це один раз,
+ * фронтенду не потрібно знати про існування override взагалі.
  */
 public record ListingResponse(
         UUID id,
         UUID ownerId,
         String ownerName,
         String ownerAvatarUrl,
-        String ownerCity,
+        SettlementType settlementType,
+        String region,
+        String settlementName,
         BigDecimal ownerRatingAvg,
         UUID bookCatalogEntryId,
         String bookTitle,
