@@ -17,6 +17,7 @@ CREATE TYPE shipment_carrier AS ENUM ('NOVA_POSHTA', 'UKRPOSHTA', 'OTHER');
 CREATE TYPE extension_status AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
 CREATE TYPE dispute_status AS ENUM ('OPEN', 'RESOLVED_FAVOR_FILER', 'RESOLVED_FAVOR_OTHER', 'DISMISSED');
 CREATE TYPE restriction_type AS ENUM ('TEMPORARY', 'PERMANENT');
+CREATE TYPE settlement_type AS ENUM ('CITY', 'VILLAGE', 'SETTLEMENT');
 
 -- ==========================================================
 -- USERS
@@ -28,7 +29,9 @@ CREATE TABLE users (
                        password_hash VARCHAR(255),
                        name VARCHAR(255) NOT NULL,
                        avatar_url VARCHAR(512),
-                       city VARCHAR(255),
+                       settlement_type settlement_type,
+                       region VARCHAR(255),
+                       settlement_name VARCHAR(255),
                        bio TEXT,
                        rating_avg NUMERIC(3,2) DEFAULT 0,
                        books_taken INT DEFAULT 0,
@@ -67,6 +70,12 @@ CREATE TABLE listings (
                           owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                           book_catalog_entry_id UUID NOT NULL REFERENCES book_catalog_entries(id),
                           condition_description TEXT,
+    -- settlement_* тут ОПЦІЙНІ (nullable) - override локації
+    -- профілю власника. NULL = "показувати населений пункт
+    -- власника", заповнено = "книга/передача в ІНШОМУ місці".
+                          settlement_type settlement_type,
+                          region VARCHAR(255),
+                          settlement_name VARCHAR(255),
                           delivery_methods TEXT[] NOT NULL DEFAULT '{}'
                               CHECK (delivery_methods <@ ARRAY['PICKUP','MAIL']::text[]),
                           status listing_status DEFAULT 'AVAILABLE',
@@ -139,6 +148,10 @@ CREATE TABLE exchange_photos (
                                  created_at TIMESTAMP DEFAULT now()
 );
 
+-- shipment_info.city - НЕ пов'язано з архітектурою settlement_type/region/
+-- settlement_name вище. Це адреса ДОСТАВКИ конкретної посилки (Нова Пошта/
+-- Укрпошта), окреме поняття від "де живе користувач" - свідомо лишається
+-- простим текстовим полем, як і було.
 CREATE TABLE shipment_info (
                                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                                exchange_id UUID NOT NULL REFERENCES exchanges(id) ON DELETE CASCADE,
