@@ -45,6 +45,11 @@ public class ListingController {
         return listingService.search(genre, city, deliveryMethod, status, search, pageable);
     }
 
+    @GetMapping("/cities")
+    public List<String> getCities() {
+        return listingService.getAvailableCities();
+    }
+
     @GetMapping("/{id}")
     public ListingResponse getById(@PathVariable UUID id) {
         return listingService.getById(id);

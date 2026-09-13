@@ -192,4 +192,9 @@ public class ListingService {
             }
         }
     }
+
+    @Transactional(readOnly = true)
+    public List<String> getAvailableCities() {
+        return listingRepository.findDistinctSettlementNames();
+    }
 }

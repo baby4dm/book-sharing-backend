@@ -1,6 +1,7 @@
 package com.booksharing.service;
 
 import com.booksharing.common.exception.ResourceNotFoundException;
+import java.util.List;
 import java.util.UUID;
 
 import com.booksharing.dto.req.UpdateUserProfileRequest;
