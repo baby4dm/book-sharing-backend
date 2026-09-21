@@ -1,5 +1,6 @@
 package com.booksharing.security;
 
+import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +16,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -37,6 +39,7 @@ public class SecurityConfig {
     private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final CustomOidcUserService customOidcUserService;
 
     @Value("${app.frontend.base-url}")
     private String frontendBaseUrl;
@@ -58,8 +61,31 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/listings/**", "/api/posts/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2Login(oauth2 -> oauth2
-                        .userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
+                        .userInfoEndpoint(userInfo -> userInfo
+                                .userService(customOAuth2UserService)
+                                .oidcUserService(customOidcUserService))
                         .successHandler(oAuth2AuthenticationSuccessHandler))
+                // Без цього блоку Spring Security для БУДЬ-ЯКОГО неавторизованого
+                // запиту на /api/** (протермінований/відсутній JWT) автоматично
+                // підставляє LoginUrlAuthenticationEntryPoint - той самий,
+                // що й для браузерного oauth2Login - і повертає 302 редірект
+                // на /login замість чистого 401. Axios-фронтенд очікує саме
+                // 401 (наш response-interceptor ловить його явно), не 302,
+                // тому REST-ендпоінти мають отримати ВЛАСНИЙ entry point,
+                // не той, що призначений для браузерної OAuth2-навігації.
+                // response.setStatus(), НЕ sendError() - sendError() запускає
+                // внутрішній forward на /error (стандартний механізм Spring
+                // Boot для сторінок помилок), а цей forward ЗНОВУ проходить
+                // через весь security filter chain як новий запит. Оскільки
+                // /error не підпадає під /api/**, він потрапляє на ДЕФОЛТНИЙ
+                // entry point (для браузерної навігації) - той самий, що
+                // редіректить на /oauth2/authorization/google. setStatus()
+                // просто виставляє код відповіді напряму, без internal forward.
+                .exceptionHandling(exceptions -> exceptions
+                        .defaultAuthenticationEntryPointFor(
+                                (request, response, authException) ->
+                                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED),
+                                PathPatternRequestMatcher.withDefaults().matcher("/api/**")))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

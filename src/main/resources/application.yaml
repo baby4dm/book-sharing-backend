@@ -24,6 +24,8 @@ spring:
 
 
 
+
+
 # Власні JWT, що видаються після успішного логіну через Google (див. security-модуль).
 # secret МАЄ бути щонайменше 32 символи (256 біт) для HS256 - без цього jjwt кине WeakKeyException.
 # Для проду - обов'язково винести в змінну середовища, значення нижче лише для локальної розробки.
@@ -34,6 +36,10 @@ app:
   frontend:
     base-url: http://localhost:5173
     oauth2-redirect-path: /oauth-callback
+
+logging:
+  level:
+    org.springframework.security: DEBUG
 
 server:
   port: 8080
