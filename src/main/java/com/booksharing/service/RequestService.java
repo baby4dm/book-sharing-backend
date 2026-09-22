@@ -4,14 +4,21 @@ import com.booksharing.common.exception.ResourceNotFoundException;
 import com.booksharing.dto.req.CreateRequestRequest;
 import com.booksharing.dto.req.RejectRequestRequest;
 import com.booksharing.dto.res.RequestResponse;
-import com.booksharing.entity.*;
-import com.booksharing.enums.*;
+import com.booksharing.entity.ChatRoom;
+import com.booksharing.entity.Exchange;
+import com.booksharing.entity.Listing;
+import com.booksharing.entity.Request;
+import com.booksharing.entity.User;
+import com.booksharing.enums.DeliveryMethod;
+import com.booksharing.enums.ExchangeStatus;
+import com.booksharing.enums.ListingStatus;
+import com.booksharing.enums.NotificationType;
+import com.booksharing.enums.RequestStatus;
 import com.booksharing.mapper.RequestMapper;
 import com.booksharing.repository.ChatRoomRepository;
 import com.booksharing.repository.ExchangeRepository;
 import com.booksharing.repository.ListingRepository;
 import com.booksharing.repository.RequestRepository;
-import com.booksharing.entity.User;
 import com.booksharing.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -21,11 +28,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Черга заявок навмисно не блокує подання нових заявок, поки одна вже
- * {@code ACTIVE} - усі учасники (не лише власник) бачать повну чергу
- * (див. {@link #getQueueForListing}), і чекають рішення власника по черзі.
- */
 @Service
 @RequiredArgsConstructor
 public class RequestService {
@@ -87,9 +89,16 @@ public class RequestService {
                 .map(requestMapper::toResponse)
                 .toList();
     }
-
+    @Transactional(readOnly = true)
     public List<RequestResponse> getMyRequests(UUID requesterId) {
         return requestRepository.findByRequesterId(requesterId).stream()
+                .map(requestMapper::toResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<RequestResponse> getReceivedRequests(UUID ownerId) {
+        return requestRepository.findByListing_Owner_IdOrderByCreatedAtDesc(ownerId).stream()
                 .map(requestMapper::toResponse)
                 .toList();
     }

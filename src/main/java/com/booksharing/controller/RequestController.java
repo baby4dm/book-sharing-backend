@@ -31,6 +31,11 @@ public class RequestController {
         return requestService.getMyRequests(currentUser.getId());
     }
 
+    @GetMapping("/received")
+    public List<RequestResponse> getReceivedRequests(@AuthenticationPrincipal User currentUser) {
+        return requestService.getReceivedRequests(currentUser.getId());
+    }
+
     @PatchMapping("/{id}/approve")
     public RequestResponse approve(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
         return requestService.approve(id, currentUser.getId());

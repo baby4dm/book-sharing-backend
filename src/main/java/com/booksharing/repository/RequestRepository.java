@@ -18,4 +18,10 @@ public interface RequestRepository extends JpaRepository<Request, UUID> {
 
     // на listing може бути щонайбільше одна ACTIVE заявка одночасно
     Optional<Request> findByListingIdAndStatus(UUID listingId, RequestStatus status);
+
+    // "вхідні" заявки для власника - на всі ЙОГО оголошення разом, не на
+    // одне конкретне. Underscore-нотація (Listing_Owner_Id) traverse'ить
+    // Request -> listing -> owner -> id через вкладені зв'язки, Spring
+    // Data сам генерує потрібний JOIN із назви методу.
+    List<Request> findByListing_Owner_IdOrderByCreatedAtDesc(UUID ownerId);
 }
