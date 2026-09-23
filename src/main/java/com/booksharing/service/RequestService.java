@@ -84,18 +84,21 @@ public class RequestService {
     }
 
     /** Видно всім, не лише власнику - учасники черги бачать повну картину. */
+    @Transactional(readOnly = true)
     public List<RequestResponse> getQueueForListing(UUID listingId) {
         return requestRepository.findByListingIdOrderByCreatedAtAsc(listingId).stream()
                 .map(requestMapper::toResponse)
                 .toList();
     }
+
     @Transactional(readOnly = true)
     public List<RequestResponse> getMyRequests(UUID requesterId) {
-        return requestRepository.findByRequesterId(requesterId).stream()
+        return requestRepository.findByRequesterIdOrderByCreatedAtDesc(requesterId).stream()
                 .map(requestMapper::toResponse)
                 .toList();
     }
 
+    /** "Вхідні" заявки - на всі оголошення, де поточний користувач власник. */
     @Transactional(readOnly = true)
     public List<RequestResponse> getReceivedRequests(UUID ownerId) {
         return requestRepository.findByListing_Owner_IdOrderByCreatedAtDesc(ownerId).stream()

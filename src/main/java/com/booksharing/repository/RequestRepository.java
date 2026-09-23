@@ -14,7 +14,7 @@ public interface RequestRepository extends JpaRepository<Request, UUID> {
     // власник має бачити всіх заявників одночасно (не тільки свою позицію)
     List<Request> findByListingIdOrderByCreatedAtAsc(UUID listingId);
 
-    List<Request> findByRequesterId(UUID requesterId);
+    List<Request> findByRequesterIdOrderByCreatedAtDesc(UUID requesterId);
 
     // на listing може бути щонайбільше одна ACTIVE заявка одночасно
     Optional<Request> findByListingIdAndStatus(UUID listingId, RequestStatus status);
