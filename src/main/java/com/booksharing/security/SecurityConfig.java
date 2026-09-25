@@ -47,7 +47,6 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // stateless REST API з Bearer-токенами - класичний CSRF тут не актуальний
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
@@ -57,30 +56,14 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        // публічний перегляд без автентифікації: стрічка оголошень і постів
                         .requestMatchers(HttpMethod.GET, "/api/listings/**", "/api/posts/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo
                                 .userService(customOAuth2UserService)
                                 .oidcUserService(customOidcUserService))
                         .successHandler(oAuth2AuthenticationSuccessHandler))
-                // Без цього блоку Spring Security для БУДЬ-ЯКОГО неавторизованого
-                // запиту на /api/** (протермінований/відсутній JWT) автоматично
-                // підставляє LoginUrlAuthenticationEntryPoint - той самий,
-                // що й для браузерного oauth2Login - і повертає 302 редірект
-                // на /login замість чистого 401. Axios-фронтенд очікує саме
-                // 401 (наш response-interceptor ловить його явно), не 302,
-                // тому REST-ендпоінти мають отримати ВЛАСНИЙ entry point,
-                // не той, що призначений для браузерної OAuth2-навігації.
-                // response.setStatus(), НЕ sendError() - sendError() запускає
-                // внутрішній forward на /error (стандартний механізм Spring
-                // Boot для сторінок помилок), а цей forward ЗНОВУ проходить
-                // через весь security filter chain як новий запит. Оскільки
-                // /error не підпадає під /api/**, він потрапляє на ДЕФОЛТНИЙ
-                // entry point (для браузерної навігації) - той самий, що
-                // редіректить на /oauth2/authorization/google. setStatus()
-                // просто виставляє код відповіді напряму, без internal forward.
                 .exceptionHandling(exceptions -> exceptions
                         .defaultAuthenticationEntryPointFor(
                                 (request, response, authException) ->

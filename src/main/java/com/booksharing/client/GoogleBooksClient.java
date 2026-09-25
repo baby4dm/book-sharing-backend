@@ -7,28 +7,25 @@ import com.booksharing.dto.res.GoogleBooksSearchResponse.GoogleBooksVolume.Volum
 import com.booksharing.dto.res.GoogleBooksSearchResponse.GoogleBooksVolume.VolumeInfo.IndustryIdentifier;
 import java.util.List;
 
-import com.booksharing.service.BookCatalogService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
-/**
- * Проксі-пошук до Google Books API — без API-ключа (базовий пошук не
- * потребує автентифікації). Результати НЕ зберігаються в БД тут: це
- * лише прев'ю для вибору користувачем; кешування в
- * {@code book_catalog_entries} відбувається окремим кроком через
- * {@link BookCatalogService#resolve}, коли користувач обрав конкретну книгу.
- */
 @Component
-public class  GoogleBooksClient {
+public class GoogleBooksClient {
 
     private static final int MAX_RESULTS = 10;
 
     private final RestClient restClient;
+    private final String apiKey;
 
-    public GoogleBooksClient(RestClient.Builder restClientBuilder) {
+    public GoogleBooksClient(
+            RestClient.Builder restClientBuilder,
+            @Value("${google.books.api-key}") String apiKey) {
         this.restClient = restClientBuilder
                 .baseUrl("https://www.googleapis.com/books/v1")
                 .build();
+        this.apiKey = apiKey;
     }
 
     public List<BookCatalogSearchResultResponse> search(String query) {
@@ -37,10 +34,10 @@ public class  GoogleBooksClient {
                         .path("/volumes")
                         .queryParam("q", query)
                         .queryParam("maxResults", MAX_RESULTS)
+                        .queryParam("key", apiKey)
                         .build())
                 .retrieve()
                 .body(GoogleBooksSearchResponse.class);
-
         if (response == null || response.items() == null) {
             return List.of();
         }
