@@ -4,6 +4,7 @@ import com.booksharing.entity.Listing;
 import com.booksharing.enums.ListingStatus;
 import com.booksharing.service.ListingService;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.data.jpa.domain.Specification;
 
 /**
@@ -20,9 +21,13 @@ public final class ListingSpecifications {
     private ListingSpecifications() {
     }
 
-    public static Specification<Listing> hasStatus(ListingStatus status) {
-        return (root, query, cb) ->
-                status == null ? null : cb.equal(root.get("status"), status);
+    public static Specification<Listing> hasStatus(List<ListingStatus> statuses) {
+        return (root, query, cb) -> {
+            if (statuses == null || statuses.isEmpty()) {
+                return null;
+            }
+            return root.get("status").in(statuses);
+        };
     }
 
     /**
@@ -70,5 +75,28 @@ public final class ListingSpecifications {
                     cb.like(cb.lower(root.get("bookCatalogEntry").get("title")), pattern),
                     cb.like(cb.lower(root.get("bookCatalogEntry").get("author")), pattern));
         };
+    }
+
+    /**
+     * Ховає власні оголошення з каталогу - подати заявку на свою книгу
+     * все одно неможливо ({@link com.booksharing.service.RequestService#submit}
+     * відхиляє це окремою перевіркою), тому бачити її в загальній стрічці
+     * для пошуку/заявок сенсу немає. {@code excludedOwnerId} навмисно
+     * {@code null}-безпечний: для гостя (анонімного відвідувача без
+     * токена) фільтр просто не застосовується, бо виключати нічию книгу
+     * не потрібно.
+     */
+    public static Specification<Listing> excludeOwner(UUID excludedOwnerId) {
+        return (root, query, cb) -> {
+            if (excludedOwnerId == null) {
+                return null;
+            }
+            return cb.notEqual(root.get("owner").get("id"), excludedOwnerId);
+        };
+    }
+
+    /** Протилежність до {@link #excludeOwner} - для "Моїх оголошень". */
+    public static Specification<Listing> hasOwner(UUID ownerId) {
+        return (root, query, cb) -> cb.equal(root.get("owner").get("id"), ownerId);
     }
 }

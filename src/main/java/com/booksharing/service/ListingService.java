@@ -87,24 +87,26 @@ public class ListingService {
      * вже після фільтра.
      */
     @Transactional(readOnly = true)
-    public Page<ListingResponse> search(List<String> genre, List<String> city, String deliveryMethod,
-                                        ListingStatus status, String searchText, Pageable pageable) {
+    public Page<ListingResponse> search(List<String> genre, List<String> city, List<String> deliveryMethod,
+                                        List<ListingStatus> status, String searchText, UUID excludeOwnerId,
+                                        Pageable pageable) {
         Specification<Listing> spec = Specification
                 .where(ListingSpecifications.hasStatus(status))
                 .and(ListingSpecifications.hasGenre(genre))
                 .and(ListingSpecifications.hasSettlement(city))
-                .and(ListingSpecifications.matchesSearch(searchText));
+                .and(ListingSpecifications.matchesSearch(searchText))
+                .and(ListingSpecifications.excludeOwner(excludeOwnerId));
 
-        if (deliveryMethod == null || deliveryMethod.isBlank()) {
+        if (deliveryMethod == null || deliveryMethod.isEmpty()) {
             return listingRepository.findAll(spec, pageable)
                     .map(l -> listingMapper.toResponse(l, photoUrlsOf(l.getId())));
         }
 
-        // сортування рахуємо на рівні БД (ORDER BY) навіть тут - фільтр
-        // по deliveryMethod далі тільки ВИДАЛЯЄ елементи, не переставляє
-        // їх, тому порядок, заданий сортуванням, лишається правильним
+        // "будь-який з обраних" - оголошення проходить, якщо підтримує
+        // ХОЧА Б ОДИН із вибраних способів доставки (логіка АБО, не
+        // "точно всі обрані одночасно")
         List<Listing> filtered = listingRepository.findAll(spec, pageable.getSort()).stream()
-                .filter(l -> l.getDeliveryMethods().contains(deliveryMethod))
+                .filter(l -> deliveryMethod.stream().anyMatch(dm -> l.getDeliveryMethods().contains(dm)))
                 .toList();
 
         int start = (int) pageable.getOffset();
@@ -196,5 +198,18 @@ public class ListingService {
     @Transactional(readOnly = true)
     public List<String> getAvailableCities() {
         return listingRepository.findDistinctSettlementNames();
+    }
+
+    /**
+     * "Мої оголошення" - завжди повертає ВСІ статуси власника разом
+     * (включно з ARCHIVED), на відміну від публічного {@link #search}, де
+     * ARCHIVED зазвичай не шукають. Власник має бачити повну картину
+     * своїх книг, не лише активні.
+     */
+    @Transactional(readOnly = true)
+    public Page<ListingResponse> getMyListings(UUID ownerId, Pageable pageable) {
+        Specification<Listing> spec = ListingSpecifications.hasOwner(ownerId);
+        return listingRepository.findAll(spec, pageable)
+                .map(l -> listingMapper.toResponse(l, photoUrlsOf(l.getId())));
     }
 }
