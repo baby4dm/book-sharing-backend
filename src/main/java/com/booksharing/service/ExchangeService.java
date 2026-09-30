@@ -47,7 +47,7 @@ public class ExchangeService {
     public ExchangeResponse getById(UUID id) {
         return toResponse(findExchangeOrThrow(id));
     }
-
+    @Transactional(readOnly = true)
     public List<ExchangeResponse> getMyExchanges(UUID userId) {
         List<Exchange> asOwner = exchangeRepository.findByOwnerId(userId);
         List<Exchange> asReader = exchangeRepository.findByReaderId(userId);
