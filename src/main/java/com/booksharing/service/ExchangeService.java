@@ -43,7 +43,7 @@ public class ExchangeService {
     private final ListingRepository listingRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
-
+    @Transactional(readOnly = true)
     public ExchangeResponse getById(UUID id) {
         return toResponse(findExchangeOrThrow(id));
     }
