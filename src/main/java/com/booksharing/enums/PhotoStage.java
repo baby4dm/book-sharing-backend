@@ -5,5 +5,6 @@ package com.booksharing.enums;
  */
 public enum PhotoStage {
     HANDOVER,
-    RETURN
+    RETURN,
+    DISPUTE
 }

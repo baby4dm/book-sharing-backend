@@ -3,6 +3,7 @@ package com.booksharing.controller;
 import com.booksharing.dto.req.AddExchangePhotoRequest;
 import com.booksharing.dto.req.CreateExtensionRequest;
 import com.booksharing.dto.req.CreateShipmentRequest;
+import com.booksharing.dto.req.OpenDisputeRequest;
 import com.booksharing.dto.res.ExchangeResponse;
 import com.booksharing.service.ExchangeService;
 import com.booksharing.dto.req.ShipWaybillRequest;
@@ -62,6 +63,22 @@ public class ExchangeController {
     @PostMapping("/{id}/confirm-return")
     public ExchangeResponse confirmReturn(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
         return exchangeService.confirmReturn(id, currentUser.getId());
+    }
+
+    @PostMapping("/{id}/dispute-photos")
+    public ExchangeResponse addDisputePhoto(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody AddExchangePhotoRequest request) {
+        return exchangeService.addDisputePhoto(id, currentUser.getId(), request);
+    }
+
+    @PostMapping("/{id}/dispute")
+    public ExchangeResponse openDispute(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody OpenDisputeRequest request) {
+        return exchangeService.openDispute(id, currentUser.getId(), request);
     }
 
     @PostMapping("/{id}/extension-requests")

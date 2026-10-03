@@ -43,10 +43,12 @@ public class ExchangeService {
     private final ListingRepository listingRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+
     @Transactional(readOnly = true)
     public ExchangeResponse getById(UUID id) {
         return toResponse(findExchangeOrThrow(id));
     }
+
     @Transactional(readOnly = true)
     public List<ExchangeResponse> getMyExchanges(UUID userId) {
         List<Exchange> asOwner = exchangeRepository.findByOwnerId(userId);
@@ -84,6 +86,12 @@ public class ExchangeService {
 
         if (exchange.getStatus() != ExchangeStatus.HANDOVER_PENDING) {
             throw new IllegalStateException("Обмін не очікує підтвердження отримання");
+        }
+
+        boolean hasHandoverPhoto = exchangePhotoRepository.findByExchangeId(exchangeId).stream()
+                .anyMatch(p -> p.getStage() == PhotoStage.HANDOVER);
+        if (!hasHandoverPhoto) {
+            throw new IllegalStateException("Власник ще не додав фото стану книги перед передачею");
         }
 
         exchange.setStatus(ExchangeStatus.IN_READING);
@@ -140,6 +148,12 @@ public class ExchangeService {
             throw new IllegalStateException("Обмін не очікує підтвердження повернення");
         }
 
+        boolean hasReturnPhoto = exchangePhotoRepository.findByExchangeId(exchangeId).stream()
+                .anyMatch(p -> p.getStage() == PhotoStage.RETURN);
+        if (!hasReturnPhoto) {
+            throw new IllegalStateException("Читач ще не додав фото стану книги перед поверненням");
+        }
+
         exchange.setStatus(ExchangeStatus.COMPLETED);
         exchange.setCompletedAt(LocalDateTime.now());
         exchangeRepository.save(exchange);
@@ -163,6 +177,54 @@ public class ExchangeService {
             reader.setBooksOverdue(reader.getBooksOverdue() + 1);
         }
         userRepository.save(reader);
+
+        return toResponse(exchange);
+    }
+
+    /** Фото-доказ до відкриття спору - і власник, і читач можуть додавати. */
+    @Transactional
+    public ExchangeResponse addDisputePhoto(UUID exchangeId, UUID currentUserId, AddExchangePhotoRequest request) {
+        Exchange exchange = findExchangeOrThrow(exchangeId);
+        User uploader = requireParticipant(exchange, currentUserId);
+
+        if (exchange.getStatus() != ExchangeStatus.RETURN_PENDING) {
+            throw new IllegalStateException("Фото-доказ для спору можна додавати лише на етапі очікування повернення");
+        }
+
+        exchangePhotoRepository.save(ExchangePhoto.builder()
+                .exchange(exchange)
+                .uploadedBy(uploader)
+                .stage(PhotoStage.DISPUTE)
+                .url(request.url())
+                .note(request.note())
+                .build());
+
+        return toResponse(exchange);
+    }
+
+    /**
+     * Власник відкриває спір замість підтвердження повернення - вимагає
+     * хоча б одне фото-доказ ({@link #addDisputePhoto}), щоб не можна
+     * було відкрити спір "голослівно", без жодного матеріалу для розгляду.
+     */
+    @Transactional
+    public ExchangeResponse openDispute(UUID exchangeId, UUID currentUserId, OpenDisputeRequest request) {
+        Exchange exchange = findExchangeOrThrow(exchangeId);
+        requireOwner(exchange, currentUserId);
+
+        if (exchange.getStatus() != ExchangeStatus.RETURN_PENDING) {
+            throw new IllegalStateException("Спір можна відкрити лише на етапі очікування повернення");
+        }
+
+        boolean hasDisputePhoto = exchangePhotoRepository.findByExchangeId(exchangeId).stream()
+                .anyMatch(p -> p.getStage() == PhotoStage.DISPUTE);
+        if (!hasDisputePhoto) {
+            throw new IllegalStateException("Додайте хоча б одне фото-доказ перед відкриттям спору");
+        }
+
+        exchange.setStatus(ExchangeStatus.DISPUTED);
+        exchange.setDisputeReason(request.reason());
+        exchangeRepository.save(exchange);
 
         return toResponse(exchange);
     }
@@ -366,6 +428,10 @@ public class ExchangeService {
                 .filter(p -> p.getStage() == PhotoStage.RETURN)
                 .map(this::toPhotoResponse)
                 .toList();
+        List<ExchangePhotoResponse> disputePhotos = photos.stream()
+                .filter(p -> p.getStage() == PhotoStage.DISPUTE)
+                .map(this::toPhotoResponse)
+                .toList();
 
         List<ShipmentInfoResponse> shipments = shipmentInfoRepository.findByExchangeId(exchange.getId()).stream()
                 .map(s -> new ShipmentInfoResponse(
@@ -395,6 +461,8 @@ public class ExchangeService {
                 exchange.getStatus(),
                 handoverPhotos,
                 returnPhotos,
+                disputePhotos,
+                exchange.getDisputeReason(),
                 shipments,
                 extensions,
                 exchange.getCreatedAt(),

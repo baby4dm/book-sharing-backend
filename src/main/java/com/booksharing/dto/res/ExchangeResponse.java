@@ -21,6 +21,8 @@ public record ExchangeResponse(
         ExchangeStatus status,
         List<ExchangePhotoResponse> handoverPhotos,
         List<ExchangePhotoResponse> returnPhotos,
+        List<ExchangePhotoResponse> disputePhotos,
+        String disputeReason,
         List<ShipmentInfoResponse> shipments,
         List<DeadlineExtensionResponse> extensionRequests,
         LocalDateTime createdAt,

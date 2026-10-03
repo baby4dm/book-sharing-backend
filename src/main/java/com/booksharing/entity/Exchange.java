@@ -81,6 +81,12 @@ public class Exchange {
     @Builder.Default
     private ExchangeStatus status = ExchangeStatus.HANDOVER_PENDING;
 
+    // заповнює openDispute() у момент відкриття спору власником; null,
+    // доки спору не було - окреме від disputePhotos (ExchangePhoto зі
+    // stage=DISPUTE), текстове пояснення причини
+    @Column(name = "dispute_reason")
+    private String disputeReason;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
