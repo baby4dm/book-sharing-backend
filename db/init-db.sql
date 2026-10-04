@@ -10,7 +10,10 @@ CREATE TYPE delivery_method AS ENUM ('PICKUP', 'MAIL');
 CREATE TYPE listing_status AS ENUM ('AVAILABLE', 'RESERVED', 'IN_EXCHANGE', 'ARCHIVED');
 CREATE TYPE request_status AS ENUM ('PENDING', 'ACTIVE', 'REJECTED', 'CANCELLED');
 CREATE TYPE exchange_status AS ENUM ('HANDOVER_PENDING', 'IN_READING', 'RETURN_PENDING', 'COMPLETED', 'OVERDUE', 'DISPUTED');
-CREATE TYPE photo_stage AS ENUM ('HANDOVER', 'RETURN');
+-- ВИПРАВЛЕНО: додано DISPUTE - фото-докази при відкритті спору
+-- (ExchangeService.addDisputePhoto/openDispute) зберігаються з цим
+-- тегом стадії, той самий механізм, що HANDOVER/RETURN.
+CREATE TYPE photo_stage AS ENUM ('HANDOVER', 'RETURN', 'DISPUTE');
 CREATE TYPE shipment_direction AS ENUM ('TO_READER', 'TO_OWNER');
 CREATE TYPE shipment_status AS ENUM ('PENDING', 'SHIPPED', 'DELIVERED');
 CREATE TYPE shipment_carrier AS ENUM ('NOVA_POSHTA', 'UKRPOSHTA', 'OTHER');
@@ -131,6 +134,10 @@ CREATE TABLE exchanges (
                            deadline DATE NOT NULL,
                            extended_deadline DATE,
                            status exchange_status DEFAULT 'HANDOVER_PENDING',
+    -- ВИПРАВЛЕНО: додано dispute_reason - заповнюється
+    -- ExchangeService.openDispute() у момент відкриття спору
+    -- власником, разом із фото-доказами (photo_stage = DISPUTE).
+                           dispute_reason TEXT,
                            created_at TIMESTAMP DEFAULT now(),
                            completed_at TIMESTAMP
 );
@@ -193,6 +200,9 @@ CREATE INDEX idx_reviews_target ON reviews(target_id);
 
 -- ==========================================================
 -- DISPUTES & RESTRICTIONS
+-- (окрема, повніша система з модераторським розглядом - НЕ
+-- підключена зараз до простого dispute_reason на exchanges.
+-- Лишається як є, інтеграція - окрема майбутня робота.)
 -- ==========================================================
 CREATE TABLE disputes (
                           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
