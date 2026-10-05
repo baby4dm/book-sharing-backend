@@ -15,6 +15,7 @@ import com.booksharing.repository.UserRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.booksharing.repository.DeadlineExtensionRequestRepository;
@@ -58,41 +59,47 @@ public class ExchangeService {
                 .toList();
     }
 
+    /**
+     * Крок 1. Власник надсилає від 1 до 4 фото стану книги перед передачею.
+     * Надсилання одноразове: додати фото на цьому етапі вдруге не можна.
+     */
     @Transactional
-    public ExchangeResponse addHandoverPhoto(UUID exchangeId, UUID currentUserId, AddExchangePhotoRequest request) {
+    public ExchangeResponse submitHandoverPhotos(UUID exchangeId, UUID currentUserId, SubmitPhotosRequest request) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
-        User uploader = requireParticipant(exchange, currentUserId);
+        requireOwner(exchange, currentUserId);
+        requireStatus(exchange, ExchangeStatus.HANDOVER_PENDING,
+                "Фото стану книги можна надсилати лише до передачі");
 
-        if (exchange.getStatus() != ExchangeStatus.HANDOVER_PENDING) {
-            throw new IllegalStateException("Фото передачі можна додавати лише до підтвердження отримання");
+        if (hasPhotoBy(exchangeId, PhotoStage.HANDOVER, exchange.getOwner().getId())) {
+            throw new IllegalStateException("Ви вже надіслали фото стану книги");
         }
 
-        exchangePhotoRepository.save(ExchangePhoto.builder()
-                .exchange(exchange)
-                .uploadedBy(uploader)
-                .stage(PhotoStage.HANDOVER)
-                .url(request.url())
-                .note(request.note())
-                .build());
-
+        savePhotos(exchange, exchange.getOwner(), PhotoStage.HANDOVER, request.urls());
         return toResponse(exchange);
     }
 
-    /** Читач підтверджує фактичне отримання книги (незалежно від способу доставки). */
+    /**
+     * Крок 3. Читач одним запитом надсилає від 1 до 4 фото при отриманні й
+     * підтверджує отримання. Для доставки поштою це ж позначає посилку
+     * доставленою - окремого підтвердження доставки немає.
+     */
     @Transactional
-    public ExchangeResponse confirmReceived(UUID exchangeId, UUID currentUserId) {
+    public ExchangeResponse confirmReceived(UUID exchangeId, UUID currentUserId, SubmitPhotosRequest request) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
         requireReader(exchange, currentUserId);
+        requireStatus(exchange, ExchangeStatus.HANDOVER_PENDING,
+                "Обмін не очікує підтвердження отримання");
 
-        if (exchange.getStatus() != ExchangeStatus.HANDOVER_PENDING) {
-            throw new IllegalStateException("Обмін не очікує підтвердження отримання");
+        if (!hasPhotoBy(exchangeId, PhotoStage.HANDOVER, exchange.getOwner().getId())) {
+            throw new IllegalStateException("Власник ще не надіслав фото стану книги");
         }
 
-        boolean hasHandoverPhoto = exchangePhotoRepository.findByExchangeId(exchangeId).stream()
-                .anyMatch(p -> p.getStage() == PhotoStage.HANDOVER);
-        if (!hasHandoverPhoto) {
-            throw new IllegalStateException("Власник ще не додав фото стану книги перед передачею");
+        if (exchange.getDeliveryMethod() == DeliveryMethod.MAIL) {
+            markDelivered(requireShippedShipment(
+                    exchangeId, ShipmentDirection.TO_READER, "Власник ще не відправив книгу"));
         }
+
+        savePhotos(exchange, exchange.getReader(), PhotoStage.HANDOVER, request.urls());
 
         exchange.setStatus(ExchangeStatus.IN_READING);
         exchangeRepository.save(exchange);
@@ -105,53 +112,45 @@ public class ExchangeService {
     }
 
     /**
-     * Перший виклик із {@code IN_READING} автоматично переводить обмін у
-     * {@code RETURN_PENDING} - окремого ендпоінта "почати повернення" не
-     * потрібно, читач просто починає документувати стан книги.
+     * Крок 4. Читач надсилає від 1 до 4 фото стану книги перед поверненням -
+     * обмін переходить у {@code RETURN_PENDING}. Повторно надіслати не можна
+     * (після переходу статус уже не {@code IN_READING}).
      */
     @Transactional
-    public ExchangeResponse addReturnPhoto(UUID exchangeId, UUID currentUserId, AddExchangePhotoRequest request) {
+    public ExchangeResponse submitReturnPhotos(UUID exchangeId, UUID currentUserId, SubmitPhotosRequest request) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
-        User uploader = requireParticipant(exchange, currentUserId);
+        requireReader(exchange, currentUserId);
+        requireStatus(exchange, ExchangeStatus.IN_READING,
+                "Фото повернення можна надіслати лише під час читання");
 
-        if (exchange.getStatus() != ExchangeStatus.IN_READING
-                && exchange.getStatus() != ExchangeStatus.RETURN_PENDING) {
-            throw new IllegalStateException("Фото повернення можна додавати лише під час читання або повернення");
-        }
+        savePhotos(exchange, exchange.getReader(), PhotoStage.RETURN, request.urls());
 
-        if (exchange.getStatus() == ExchangeStatus.IN_READING) {
-            exchange.setStatus(ExchangeStatus.RETURN_PENDING);
-            exchangeRepository.save(exchange);
-        }
-
-        exchangePhotoRepository.save(ExchangePhoto.builder()
-                .exchange(exchange)
-                .uploadedBy(uploader)
-                .stage(PhotoStage.RETURN)
-                .url(request.url())
-                .note(request.note())
-                .build());
+        exchange.setStatus(ExchangeStatus.RETURN_PENDING);
+        exchangeRepository.save(exchange);
 
         return toResponse(exchange);
     }
 
     /**
-     * Власник підтверджує фінальне повернення - закриває обмін і оновлює
-     * статистику обох учасників (враховуючи продовжений дедлайн, якщо він був).
+     * Крок 6. Власник підтверджує фінальне повернення - закриває обмін і
+     * оновлює статистику обох учасників (враховуючи продовжений дедлайн).
+     * Потребує фото читача; для пошти - що читач відправив книгу назад
+     * (це ж позначає зворотну посилку доставленою).
      */
     @Transactional
     public ExchangeResponse confirmReturn(UUID exchangeId, UUID currentUserId) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
         requireOwner(exchange, currentUserId);
+        requireStatus(exchange, ExchangeStatus.RETURN_PENDING,
+                "Обмін не очікує підтвердження повернення");
 
-        if (exchange.getStatus() != ExchangeStatus.RETURN_PENDING) {
-            throw new IllegalStateException("Обмін не очікує підтвердження повернення");
+        if (!hasPhotoBy(exchangeId, PhotoStage.RETURN, exchange.getReader().getId())) {
+            throw new IllegalStateException("Читач ще не надіслав фото стану книги перед поверненням");
         }
 
-        boolean hasReturnPhoto = exchangePhotoRepository.findByExchangeId(exchangeId).stream()
-                .anyMatch(p -> p.getStage() == PhotoStage.RETURN);
-        if (!hasReturnPhoto) {
-            throw new IllegalStateException("Читач ще не додав фото стану книги перед поверненням");
+        if (exchange.getDeliveryMethod() == DeliveryMethod.MAIL) {
+            markDelivered(requireShippedShipment(
+                    exchangeId, ShipmentDirection.TO_OWNER, "Читач ще не відправив книгу назад"));
         }
 
         exchange.setStatus(ExchangeStatus.COMPLETED);
@@ -308,6 +307,17 @@ public class ExchangeService {
             throw new AccessDeniedException("Контактні дані для цього напрямку вказує інший учасник обміну");
         }
 
+        if (request.direction() == ShipmentDirection.TO_READER) {
+            requireStatus(exchange, ExchangeStatus.HANDOVER_PENDING,
+                    "Адресу доставки до читача можна вказати лише до отримання книги");
+            if (!hasPhotoBy(exchangeId, PhotoStage.HANDOVER, exchange.getOwner().getId())) {
+                throw new IllegalStateException("Власник ще не надіслав фото стану книги");
+            }
+        } else {
+            requireStatus(exchange, ExchangeStatus.RETURN_PENDING,
+                    "Адресу для повернення можна вказати після того, як читач надішле фото повернення");
+        }
+
         boolean alreadyExists = shipmentInfoRepository
                 .findByExchangeIdAndDirection(exchangeId, request.direction())
                 .isPresent();
@@ -342,6 +352,11 @@ public class ExchangeService {
         if (!expectedSenderId.equals(currentUserId)) {
             throw new AccessDeniedException("Накладну для цього відправлення вантажить інший учасник обміну");
         }
+        requireStatus(exchange,
+                shipment.getDirection() == ShipmentDirection.TO_READER
+                        ? ExchangeStatus.HANDOVER_PENDING
+                        : ExchangeStatus.RETURN_PENDING,
+                "Накладну не можна додати на поточному етапі обміну");
         if (shipment.getStatus() != ShipmentStatus.PENDING) {
             throw new IllegalStateException("Це відправлення вже позначено як відправлене");
         }
@@ -354,32 +369,47 @@ public class ExchangeService {
         return toResponse(exchange);
     }
 
-    /** Отримувач (той самий, хто вказував контактні дані) підтверджує доставку. */
-    @Transactional
-    public ExchangeResponse confirmDelivered(UUID exchangeId, UUID shipmentId, UUID currentUserId) {
-        Exchange exchange = findExchangeOrThrow(exchangeId);
-        ShipmentInfo shipment = findShipmentOrThrow(exchange, shipmentId);
-
-        UUID expectedRecipientId = shipment.getDirection() == ShipmentDirection.TO_READER
-                ? exchange.getReader().getId()
-                : exchange.getOwner().getId();
-        if (!expectedRecipientId.equals(currentUserId)) {
-            throw new AccessDeniedException("Підтвердити доставку може лише отримувач цього відправлення");
-        }
-        if (shipment.getStatus() != ShipmentStatus.SHIPPED) {
-            throw new IllegalStateException("Це відправлення ще не позначено як відправлене");
-        }
-
-        shipment.setStatus(ShipmentStatus.DELIVERED);
-        shipment.setDeliveredAt(LocalDateTime.now());
-        shipmentInfoRepository.save(shipment);
-
-        return toResponse(exchange);
-    }
-
     // ==========================================================
     // Внутрішні допоміжні методи
     // ==========================================================
+
+    private void requireStatus(Exchange exchange, ExchangeStatus expected, String message) {
+        if (exchange.getStatus() != expected) {
+            throw new IllegalStateException(message);
+        }
+    }
+
+    private boolean hasPhotoBy(UUID exchangeId, PhotoStage stage, UUID userId) {
+        return exchangePhotoRepository.findByExchangeId(exchangeId).stream()
+                .anyMatch(p -> p.getStage() == stage && p.getUploadedBy().getId().equals(userId));
+    }
+
+    private void savePhotos(Exchange exchange, User uploader, PhotoStage stage, List<String> urls) {
+        for (String url : urls) {
+            exchangePhotoRepository.save(ExchangePhoto.builder()
+                    .exchange(exchange)
+                    .uploadedBy(uploader)
+                    .stage(stage)
+                    .url(url)
+                    .build());
+        }
+    }
+
+    private Optional<ShipmentInfo> findShipment(UUID exchangeId, ShipmentDirection direction) {
+        return shipmentInfoRepository.findByExchangeIdAndDirection(exchangeId, direction);
+    }
+
+    private ShipmentInfo requireShippedShipment(UUID exchangeId, ShipmentDirection direction, String message) {
+        return findShipment(exchangeId, direction)
+                .filter(s -> s.getStatus() == ShipmentStatus.SHIPPED)
+                .orElseThrow(() -> new IllegalStateException(message));
+    }
+
+    private void markDelivered(ShipmentInfo shipment) {
+        shipment.setStatus(ShipmentStatus.DELIVERED);
+        shipment.setDeliveredAt(LocalDateTime.now());
+        shipmentInfoRepository.save(shipment);
+    }
 
     private User requireParticipant(Exchange exchange, UUID currentUserId) {
         if (exchange.getOwner().getId().equals(currentUserId)) {

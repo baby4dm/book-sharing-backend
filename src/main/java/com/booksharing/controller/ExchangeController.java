@@ -4,6 +4,7 @@ import com.booksharing.dto.req.AddExchangePhotoRequest;
 import com.booksharing.dto.req.CreateExtensionRequest;
 import com.booksharing.dto.req.CreateShipmentRequest;
 import com.booksharing.dto.req.OpenDisputeRequest;
+import com.booksharing.dto.req.SubmitPhotosRequest;
 import com.booksharing.dto.res.ExchangeResponse;
 import com.booksharing.service.ExchangeService;
 import com.booksharing.dto.req.ShipWaybillRequest;
@@ -40,24 +41,27 @@ public class ExchangeController {
     }
 
     @PostMapping("/{id}/handover-photos")
-    public ExchangeResponse addHandoverPhoto(
+    public ExchangeResponse submitHandoverPhotos(
             @PathVariable UUID id,
             @AuthenticationPrincipal User currentUser,
-            @Valid @RequestBody AddExchangePhotoRequest request) {
-        return exchangeService.addHandoverPhoto(id, currentUser.getId(), request);
+            @Valid @RequestBody SubmitPhotosRequest request) {
+        return exchangeService.submitHandoverPhotos(id, currentUser.getId(), request);
     }
 
     @PostMapping("/{id}/confirm-received")
-    public ExchangeResponse confirmReceived(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
-        return exchangeService.confirmReceived(id, currentUser.getId());
+    public ExchangeResponse confirmReceived(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody SubmitPhotosRequest request) {
+        return exchangeService.confirmReceived(id, currentUser.getId(), request);
     }
 
     @PostMapping("/{id}/return-photos")
-    public ExchangeResponse addReturnPhoto(
+    public ExchangeResponse submitReturnPhotos(
             @PathVariable UUID id,
             @AuthenticationPrincipal User currentUser,
-            @Valid @RequestBody AddExchangePhotoRequest request) {
-        return exchangeService.addReturnPhoto(id, currentUser.getId(), request);
+            @Valid @RequestBody SubmitPhotosRequest request) {
+        return exchangeService.submitReturnPhotos(id, currentUser.getId(), request);
     }
 
     @PostMapping("/{id}/confirm-return")
@@ -113,13 +117,5 @@ public class ExchangeController {
             @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody ShipWaybillRequest request) {
         return exchangeService.shipWaybill(id, shipmentId, currentUser.getId(), request);
-    }
-
-    @PatchMapping("/{id}/shipment/{shipmentId}/delivered")
-    public ExchangeResponse confirmDelivered(
-            @PathVariable UUID id,
-            @PathVariable UUID shipmentId,
-            @AuthenticationPrincipal User currentUser) {
-        return exchangeService.confirmDelivered(id, shipmentId, currentUser.getId());
     }
 }
