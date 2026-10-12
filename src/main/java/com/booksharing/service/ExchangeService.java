@@ -210,16 +210,10 @@ public class ExchangeService {
     public ExchangeResponse openDispute(UUID exchangeId, UUID currentUserId, OpenDisputeRequest request) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
         requireOwner(exchange, currentUserId);
+        requireStatus(exchange, ExchangeStatus.RETURN_PENDING,
+                "Спір можна відкрити лише на етапі очікування повернення");
 
-        if (exchange.getStatus() != ExchangeStatus.RETURN_PENDING) {
-            throw new IllegalStateException("Спір можна відкрити лише на етапі очікування повернення");
-        }
-
-        boolean hasDisputePhoto = exchangePhotoRepository.findByExchangeId(exchangeId).stream()
-                .anyMatch(p -> p.getStage() == PhotoStage.DISPUTE);
-        if (!hasDisputePhoto) {
-            throw new IllegalStateException("Додайте хоча б одне фото-доказ перед відкриттям спору");
-        }
+        savePhotos(exchange, exchange.getOwner(), PhotoStage.DISPUTE, request.urls());
 
         exchange.setStatus(ExchangeStatus.DISPUTED);
         exchange.setDisputeReason(request.reason());
