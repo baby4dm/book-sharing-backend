@@ -3,17 +3,14 @@ package com.booksharing.service;
 import com.booksharing.common.exception.ResourceNotFoundException;
 import com.booksharing.dto.req.CreateRequestRequest;
 import com.booksharing.dto.req.RejectRequestRequest;
+import com.booksharing.dto.res.RequestListResponse;
 import com.booksharing.dto.res.RequestResponse;
 import com.booksharing.entity.ChatRoom;
 import com.booksharing.entity.Exchange;
 import com.booksharing.entity.Listing;
 import com.booksharing.entity.Request;
 import com.booksharing.entity.User;
-import com.booksharing.enums.DeliveryMethod;
-import com.booksharing.enums.ExchangeStatus;
-import com.booksharing.enums.ListingStatus;
-import com.booksharing.enums.NotificationType;
-import com.booksharing.enums.RequestStatus;
+import com.booksharing.enums.*;
 import com.booksharing.mapper.RequestMapper;
 import com.booksharing.repository.ChatRoomRepository;
 import com.booksharing.repository.ExchangeRepository;
@@ -21,9 +18,17 @@ import com.booksharing.repository.ListingRepository;
 import com.booksharing.repository.RequestRepository;
 import com.booksharing.repository.UserRepository;
 import java.time.LocalDateTime;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+
+import com.booksharing.spec.RequestSpecifications;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,18 +97,53 @@ public class RequestService {
     }
 
     @Transactional(readOnly = true)
-    public List<RequestResponse> getMyRequests(UUID requesterId) {
-        return requestRepository.findByRequesterIdOrderByCreatedAtDesc(requesterId).stream()
-                .map(requestMapper::toResponse)
-                .toList();
+    public RequestListResponse getMyRequests(UUID requesterId, String search,
+                                             DeliveryMethod deliveryMethod, RequestStatus status,
+                                             RequestSort sort, int page, int size) {
+        return search(RequestSpecifications.sentBy(requesterId), true,
+                search, deliveryMethod, status, sort, page, size);
     }
 
-    /** "Вхідні" заявки - на всі оголошення, де поточний користувач власник. */
     @Transactional(readOnly = true)
-    public List<RequestResponse> getReceivedRequests(UUID ownerId) {
-        return requestRepository.findByListing_Owner_IdOrderByCreatedAtDesc(ownerId).stream()
-                .map(requestMapper::toResponse)
-                .toList();
+    public RequestListResponse getReceivedRequests(UUID ownerId, String search,
+                                                   DeliveryMethod deliveryMethod, RequestStatus status,
+                                                   RequestSort sort, int page, int size) {
+        return search(RequestSpecifications.receivedBy(ownerId), false,
+                search, deliveryMethod, status, sort, page, size);
+    }
+
+    private RequestListResponse search(Specification<Request> scope, boolean personIsOwner,
+                                       String search, DeliveryMethod deliveryMethod,
+                                       RequestStatus status, RequestSort sort,
+                                       int page, int size) {
+        Specification<Request> base = Specification.allOf(
+                scope,
+                RequestSpecifications.matchesSearch(search, personIsOwner),
+                RequestSpecifications.hasDeliveryMethod(deliveryMethod));
+
+        Map<RequestStatus, Long> counts = new EnumMap<>(RequestStatus.class);
+        for (RequestStatus s : RequestStatus.values()) {
+            counts.put(s, requestRepository.count(
+                    Specification.allOf(base, RequestSpecifications.hasStatus(s))));
+        }
+        long total = counts.values().stream().mapToLong(Long::longValue).sum();
+
+        Pageable pageable = PageRequest.of(
+                Math.max(page, 0),
+                Math.min(Math.max(size, 1), 50),
+                (sort == null ? RequestSort.NEWEST : sort).toSort());
+
+        Page<Request> result = requestRepository.findAll(
+                Specification.allOf(base, RequestSpecifications.hasStatus(status)),
+                pageable);
+
+        return new RequestListResponse(
+                result.getContent().stream().map(requestMapper::toResponse).toList(),
+                counts,
+                total,
+                result.getNumber(),
+                result.getTotalPages(),
+                result.getTotalElements());
     }
 
     @Transactional
@@ -186,8 +226,6 @@ public class RequestService {
             throw new AccessDeniedException("Це не ваша заявка");
         }
         if (request.getStatus() != RequestStatus.PENDING) {
-            // скасування вже ACTIVE заявки означало б ще й відкат Listing/Exchange -
-            // цей сценарій буде окремим ендпоінтом у модулі Exchange
             throw new IllegalStateException("Скасувати можна лише заявку, яку ще не розглянули");
         }
         request.setStatus(RequestStatus.CANCELLED);
