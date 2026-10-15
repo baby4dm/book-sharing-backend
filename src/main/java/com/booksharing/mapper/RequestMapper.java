@@ -1,7 +1,7 @@
 package com.booksharing.mapper;
 
-import com.booksharing.entity.Request;
 import com.booksharing.dto.res.RequestResponse;
+import com.booksharing.entity.Request;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
@@ -14,5 +14,6 @@ public interface RequestMapper {
     @Mapping(target = "requesterName", source = "requester.name")
     @Mapping(target = "requesterAvatarUrl", source = "requester.avatarUrl")
     @Mapping(target = "requesterRatingAvg", source = "requester.ratingAvg")
+    @Mapping(target = "exchangeId", ignore = true)
     RequestResponse toResponse(Request request);
 }

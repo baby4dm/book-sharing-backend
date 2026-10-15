@@ -1,7 +1,10 @@
 package com.booksharing.repository;
 
+import com.booksharing.entity.Exchange;
 import com.booksharing.entity.Request;
 import com.booksharing.enums.RequestStatus;
+
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;

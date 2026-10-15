@@ -10,7 +10,12 @@ import com.booksharing.entity.Exchange;
 import com.booksharing.entity.Listing;
 import com.booksharing.entity.Request;
 import com.booksharing.entity.User;
-import com.booksharing.enums.*;
+import com.booksharing.enums.DeliveryMethod;
+import com.booksharing.enums.ExchangeStatus;
+import com.booksharing.enums.ListingStatus;
+import com.booksharing.enums.NotificationType;
+import com.booksharing.enums.RequestSort;
+import com.booksharing.enums.RequestStatus;
 import com.booksharing.mapper.RequestMapper;
 import com.booksharing.repository.ChatRoomRepository;
 import com.booksharing.repository.ExchangeRepository;
@@ -22,6 +27,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import com.booksharing.spec.RequestSpecifications;
 import lombok.RequiredArgsConstructor;
@@ -91,9 +97,7 @@ public class RequestService {
     /** Видно всім, не лише власнику - учасники черги бачать повну картину. */
     @Transactional(readOnly = true)
     public List<RequestResponse> getQueueForListing(UUID listingId) {
-        return requestRepository.findByListingIdOrderByCreatedAtAsc(listingId).stream()
-                .map(requestMapper::toResponse)
-                .toList();
+        return toResponses(requestRepository.findByListingIdOrderByCreatedAtAsc(listingId));
     }
 
     @Transactional(readOnly = true)
@@ -104,6 +108,7 @@ public class RequestService {
                 search, deliveryMethod, status, sort, page, size);
     }
 
+    /** "Вхідні" заявки - на всі оголошення, де поточний користувач власник. */
     @Transactional(readOnly = true)
     public RequestListResponse getReceivedRequests(UUID ownerId, String search,
                                                    DeliveryMethod deliveryMethod, RequestStatus status,
@@ -138,7 +143,7 @@ public class RequestService {
                 pageable);
 
         return new RequestListResponse(
-                result.getContent().stream().map(requestMapper::toResponse).toList(),
+                toResponses(result.getContent()),
                 counts,
                 total,
                 result.getNumber(),
@@ -178,7 +183,7 @@ public class RequestService {
                 .deadline(request.getDesiredDeadline())
                 .status(ExchangeStatus.HANDOVER_PENDING)
                 .build();
-        exchangeRepository.save(exchange);
+        exchange = exchangeRepository.save(exchange);
 
         chatRoomRepository.save(ChatRoom.builder()
                 .exchange(exchange)
@@ -192,7 +197,7 @@ public class RequestService {
                 request.getId(),
                 "Вашу заявку на книгу \"" + listing.getBookCatalogEntry().getTitle() + "\" підтверджено");
 
-        return requestMapper.toResponse(request);
+        return requestMapper.toResponse(request).withExchangeId(exchange.getId());
     }
 
     @Transactional
@@ -231,6 +236,20 @@ public class RequestService {
         request.setStatus(RequestStatus.CANCELLED);
         request.setDecidedAt(LocalDateTime.now());
         requestRepository.save(request);
+    }
+
+    private List<RequestResponse> toResponses(List<Request> requests) {
+        if (requests.isEmpty()) {
+            return List.of();
+        }
+
+        List<UUID> requestIds = requests.stream().map(Request::getId).toList();
+        Map<UUID, UUID> exchangeByRequest = exchangeRepository.findByRequestIdIn(requestIds).stream()
+                .collect(Collectors.toMap(e -> e.getRequest().getId(), Exchange::getId));
+
+        return requests.stream()
+                .map(r -> requestMapper.toResponse(r).withExchangeId(exchangeByRequest.get(r.getId())))
+                .toList();
     }
 
     private void requireListingOwnership(Request request, UUID currentUserId) {
