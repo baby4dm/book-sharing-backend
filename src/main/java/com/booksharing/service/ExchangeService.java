@@ -2,10 +2,7 @@ package com.booksharing.service;
 
 import com.booksharing.common.exception.ResourceNotFoundException;
 import com.booksharing.dto.req.*;
-import com.booksharing.dto.res.DeadlineExtensionResponse;
-import com.booksharing.dto.res.ExchangePhotoResponse;
-import com.booksharing.dto.res.ExchangeResponse;
-import com.booksharing.dto.res.ShipmentInfoResponse;
+import com.booksharing.dto.res.*;
 import com.booksharing.entity.*;
 import com.booksharing.entity.Listing;
 import com.booksharing.enums.*;
@@ -14,15 +11,17 @@ import com.booksharing.entity.User;
 import com.booksharing.repository.UserRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 import com.booksharing.repository.DeadlineExtensionRequestRepository;
 import com.booksharing.repository.ExchangePhotoRepository;
 import com.booksharing.repository.ExchangeRepository;
 import com.booksharing.repository.ShipmentInfoRepository;
+import com.booksharing.spec.ExchangeSpecifications;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -118,17 +117,60 @@ public class ExchangeService {
      */
     @Transactional
     public ExchangeResponse submitReturnPhotos(UUID exchangeId, UUID currentUserId, SubmitPhotosRequest request) {
+
         Exchange exchange = findExchangeOrThrow(exchangeId);
+        if (exchange.getStatus() != ExchangeStatus.IN_READING
+                && exchange.getStatus() != ExchangeStatus.OVERDUE) {
+            throw new IllegalStateException("Фото повернення можна надіслати лише під час читання");
+        }
         requireReader(exchange, currentUserId);
         requireStatus(exchange, ExchangeStatus.IN_READING,
                 "Фото повернення можна надіслати лише під час читання");
-
         savePhotos(exchange, exchange.getReader(), PhotoStage.RETURN, request.urls());
 
         exchange.setStatus(ExchangeStatus.RETURN_PENDING);
         exchangeRepository.save(exchange);
 
         return toResponse(exchange);
+    }
+
+    @Transactional(readOnly = true)
+    public ExchangeListResponse searchMyExchanges(
+            UUID userId,
+            String search,
+            ExchangeRole role,
+            DeliveryMethod deliveryMethod,
+            ExchangeStatus status,
+            ExchangeSort sort,
+            int page,
+            int size) {
+        Specification<Exchange> base = Specification.allOf(
+                ExchangeSpecifications.involving(userId, role),
+                ExchangeSpecifications.hasDeliveryMethod(deliveryMethod),
+                ExchangeSpecifications.matchesSearch(search, userId));
+
+        Map<ExchangeStatus, Long> counts = new EnumMap<>(ExchangeStatus.class);
+        for (ExchangeStatus value : ExchangeStatus.values()) {
+            counts.put(value, exchangeRepository.count(
+                    base.and(ExchangeSpecifications.hasStatus(value))));
+        }
+        long total = counts.values().stream().mapToLong(Long::longValue).sum();
+
+        Specification<Exchange> filtered = base
+                .and(ExchangeSpecifications.hasStatus(status))
+                .and(ExchangeSpecifications.sortedBy(sort));
+
+        Page<Exchange> result = exchangeRepository.findAll(
+                filtered,
+                PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 50)));
+
+        return new ExchangeListResponse(
+                result.getContent().stream().map(this::toResponse).toList(),
+                counts,
+                total,
+                result.getNumber(),
+                result.getTotalPages(),
+                result.getTotalElements());
     }
 
     /**
@@ -363,9 +405,6 @@ public class ExchangeService {
         return toResponse(exchange);
     }
 
-    // ==========================================================
-    // Внутрішні допоміжні методи
-    // ==========================================================
 
     private void requireStatus(Exchange exchange, ExchangeStatus expected, String message) {
         if (exchange.getStatus() != expected) {
@@ -471,10 +510,12 @@ public class ExchangeService {
                         e.getComment(), e.getCreatedAt(), e.getDecidedAt()))
                 .toList();
 
+        var book = exchange.getListing().getBookCatalogEntry();
+
         return new ExchangeResponse(
                 exchange.getId(),
                 exchange.getListing().getId(),
-                exchange.getListing().getBookCatalogEntry().getTitle(),
+                book.getTitle(),
                 exchange.getOwner().getId(),
                 exchange.getOwner().getName(),
                 exchange.getReader().getId(),
@@ -490,7 +531,11 @@ public class ExchangeService {
                 shipments,
                 extensions,
                 exchange.getCreatedAt(),
-                exchange.getCompletedAt());
+                exchange.getCompletedAt(),
+                book.getAuthor(),
+                book.getCoverUrl(),
+                toParticipant(exchange.getOwner()),
+                toParticipant(exchange.getReader()));
     }
 
     private ExchangePhotoResponse toPhotoResponse(ExchangePhoto photo) {
@@ -502,5 +547,16 @@ public class ExchangeService {
                 photo.getUrl(),
                 photo.getNote(),
                 photo.getCreatedAt());
+    }
+
+    private ExchangeParticipantResponse toParticipant(User user) {
+        return new ExchangeParticipantResponse(
+                user.getId(),
+                user.getName(),
+                user.getAvatarUrl(),
+                user.getRatingAvg(),
+                user.getBooksGiven() == null ? 0 : user.getBooksGiven(),
+                user.getBooksTaken() == null ? 0 : user.getBooksTaken(),
+                user.getBooksOverdue() == null ? 0 : user.getBooksOverdue());
     }
 }

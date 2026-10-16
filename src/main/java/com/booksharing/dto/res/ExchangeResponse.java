@@ -1,7 +1,7 @@
 package com.booksharing.dto.res;
 
-import com.booksharing.enums.ExchangeStatus;
 import com.booksharing.enums.DeliveryMethod;
+import com.booksharing.enums.ExchangeStatus;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -26,5 +26,9 @@ public record ExchangeResponse(
         List<ShipmentInfoResponse> shipments,
         List<DeadlineExtensionResponse> extensionRequests,
         LocalDateTime createdAt,
-        LocalDateTime completedAt) {
+        LocalDateTime completedAt,
+        String bookAuthor,
+        String bookCoverUrl,
+        ExchangeParticipantResponse owner,
+        ExchangeParticipantResponse reader) {
 }

@@ -5,7 +5,12 @@ import com.booksharing.dto.req.CreateExtensionRequest;
 import com.booksharing.dto.req.CreateShipmentRequest;
 import com.booksharing.dto.req.OpenDisputeRequest;
 import com.booksharing.dto.req.SubmitPhotosRequest;
+import com.booksharing.dto.res.ExchangeListResponse;
 import com.booksharing.dto.res.ExchangeResponse;
+import com.booksharing.enums.DeliveryMethod;
+import com.booksharing.enums.ExchangeRole;
+import com.booksharing.enums.ExchangeSort;
+import com.booksharing.enums.ExchangeStatus;
 import com.booksharing.service.ExchangeService;
 import com.booksharing.dto.req.ShipWaybillRequest;
 import com.booksharing.entity.User;
@@ -117,5 +122,19 @@ public class ExchangeController {
             @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody ShipWaybillRequest request) {
         return exchangeService.shipWaybill(id, shipmentId, currentUser.getId(), request);
+    }
+
+    @GetMapping("/my/search")
+    public ExchangeListResponse searchMyExchanges(
+            @AuthenticationPrincipal User currentUser,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "ALL") ExchangeRole role,
+            @RequestParam(required = false) DeliveryMethod deliveryMethod,
+            @RequestParam(required = false) ExchangeStatus status,
+            @RequestParam(defaultValue = "DEADLINE") ExchangeSort sort,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return exchangeService.searchMyExchanges(
+                currentUser.getId(), q, role, deliveryMethod, status, sort, page, size);
     }
 }
