@@ -30,5 +30,6 @@ public record ExchangeResponse(
         String bookAuthor,
         String bookCoverUrl,
         ExchangeParticipantResponse owner,
-        ExchangeParticipantResponse reader) {
+        ExchangeParticipantResponse reader,
+        List<ExchangeReviewResponse> reviews) {
 }

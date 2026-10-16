@@ -16,6 +16,7 @@ import java.util.*;
 import com.booksharing.repository.DeadlineExtensionRequestRepository;
 import com.booksharing.repository.ExchangePhotoRepository;
 import com.booksharing.repository.ExchangeRepository;
+import com.booksharing.repository.ReviewRepository;
 import com.booksharing.repository.ShipmentInfoRepository;
 import com.booksharing.spec.ExchangeSpecifications;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +41,7 @@ public class ExchangeService {
     private final ExchangePhotoRepository exchangePhotoRepository;
     private final ShipmentInfoRepository shipmentInfoRepository;
     private final DeadlineExtensionRequestRepository extensionRequestRepository;
+    private final ReviewRepository reviewRepository;
     private final ListingRepository listingRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
@@ -112,20 +114,19 @@ public class ExchangeService {
 
     /**
      * Крок 4. Читач надсилає від 1 до 4 фото стану книги перед поверненням -
-     * обмін переходить у {@code RETURN_PENDING}. Повторно надіслати не можна
-     * (після переходу статус уже не {@code IN_READING}).
+     * обмін переходить у {@code RETURN_PENDING}. Дозволено і під час читання,
+     * і в прострочці. Повторно надіслати не можна (після переходу статус
+     * уже не {@code IN_READING}/{@code OVERDUE}).
      */
     @Transactional
     public ExchangeResponse submitReturnPhotos(UUID exchangeId, UUID currentUserId, SubmitPhotosRequest request) {
-
         Exchange exchange = findExchangeOrThrow(exchangeId);
+        requireReader(exchange, currentUserId);
         if (exchange.getStatus() != ExchangeStatus.IN_READING
                 && exchange.getStatus() != ExchangeStatus.OVERDUE) {
             throw new IllegalStateException("Фото повернення можна надіслати лише під час читання");
         }
-        requireReader(exchange, currentUserId);
-        requireStatus(exchange, ExchangeStatus.IN_READING,
-                "Фото повернення можна надіслати лише під час читання");
+
         savePhotos(exchange, exchange.getReader(), PhotoStage.RETURN, request.urls());
 
         exchange.setStatus(ExchangeStatus.RETURN_PENDING);
@@ -269,7 +270,8 @@ public class ExchangeService {
         Exchange exchange = findExchangeOrThrow(exchangeId);
         requireReader(exchange, currentUserId);
 
-        if (exchange.getStatus() != ExchangeStatus.IN_READING) {
+        if (exchange.getStatus() != ExchangeStatus.IN_READING
+                && exchange.getStatus() != ExchangeStatus.OVERDUE) {
             throw new IllegalStateException("Продовження дедлайну можна запросити лише під час читання");
         }
 
@@ -510,6 +512,19 @@ public class ExchangeService {
                         e.getComment(), e.getCreatedAt(), e.getDecidedAt()))
                 .toList();
 
+        List<ExchangeReviewResponse> reviews = reviewRepository
+                .findByExchangeId(exchange.getId()).stream()
+                .map(r -> new ExchangeReviewResponse(
+                        r.getId(),
+                        r.getAuthor().getId(),
+                        r.getAuthor().getName(),
+                        r.getAuthor().getAvatarUrl(),
+                        r.getTarget().getId(),
+                        r.getRating(),
+                        r.getComment(),
+                        r.getCreatedAt()))
+                .toList();
+
         var book = exchange.getListing().getBookCatalogEntry();
 
         return new ExchangeResponse(
@@ -535,7 +550,8 @@ public class ExchangeService {
                 book.getAuthor(),
                 book.getCoverUrl(),
                 toParticipant(exchange.getOwner()),
-                toParticipant(exchange.getReader()));
+                toParticipant(exchange.getReader()),
+                reviews);
     }
 
     private ExchangePhotoResponse toPhotoResponse(ExchangePhoto photo) {
