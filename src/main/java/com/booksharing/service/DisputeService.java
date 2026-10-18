@@ -2,38 +2,32 @@ package com.booksharing.service;
 
 import com.booksharing.common.exception.ResourceNotFoundException;
 import com.booksharing.dto.req.CreateDisputeRequest;
-import com.booksharing.dto.res.DisputeResponse;
 import com.booksharing.dto.req.ResolveDisputeRequest;
+import com.booksharing.dto.res.DisputeResponse;
 import com.booksharing.entity.Dispute;
-import com.booksharing.enums.DisputeStatus;
-import com.booksharing.entity.Restriction;
-import com.booksharing.enums.RestrictionType;
-import com.booksharing.mapper.DisputeMapper;
 import com.booksharing.entity.Exchange;
-import com.booksharing.repository.ExchangeRepository;
+import com.booksharing.entity.Restriction;
+import com.booksharing.entity.User;
+import com.booksharing.enums.DisputeStatus;
 import com.booksharing.enums.ExchangeStatus;
 import com.booksharing.enums.NotificationType;
-import com.booksharing.entity.User;
-import com.booksharing.repository.UserRepository;
+import com.booksharing.enums.RestrictionType;
 import com.booksharing.enums.UserRole;
 import com.booksharing.enums.UserStatus;
+import com.booksharing.mapper.DisputeMapper;
+import com.booksharing.repository.DisputeRepository;
+import com.booksharing.repository.ExchangeRepository;
+import com.booksharing.repository.RestrictionRepository;
+import com.booksharing.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
-
-import com.booksharing.repository.DisputeRepository;
-import com.booksharing.repository.RestrictionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Ескалація при {@code RESOLVED_FAVOR_FILER}: перше підтверджене
- * порушення - {@code TEMPORARY}-обмеження на {@link #TEMPORARY_RESTRICTION_DAYS}
- * днів, повторне - {@code PERMANENT} (блокування без дати завершення).
- */
 @Service
 @RequiredArgsConstructor
 public class DisputeService {
@@ -46,12 +40,19 @@ public class DisputeService {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final DisputeMapper disputeMapper;
+    private final ExchangeService exchangeService;
 
     @Transactional
     public DisputeResponse fileDispute(UUID exchangeId, UUID currentUserId, CreateDisputeRequest request) {
         Exchange exchange = exchangeRepository.findById(exchangeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Обмін не знайдено: " + exchangeId));
         User filedBy = requireParticipant(exchange, currentUserId);
+
+        if (exchange.getStatus() != ExchangeStatus.IN_READING
+                && exchange.getStatus() != ExchangeStatus.OVERDUE
+                && exchange.getStatus() != ExchangeStatus.RETURN_PENDING) {
+            throw new IllegalStateException("Скаргу можна подати лише під час читання або повернення книги");
+        }
 
         boolean alreadyOpen = disputeRepository.findByExchangeId(exchangeId).stream()
                 .anyMatch(d -> d.getStatus() == DisputeStatus.OPEN);
@@ -68,6 +69,7 @@ public class DisputeService {
         dispute = disputeRepository.save(dispute);
 
         exchange.setStatus(ExchangeStatus.DISPUTED);
+        exchange.setDisputeReason(request.description());
         exchangeRepository.save(exchange);
 
         boolean filedByOwner = filedBy.getId().equals(exchange.getOwner().getId());
@@ -124,11 +126,9 @@ public class DisputeService {
         dispute = disputeRepository.save(dispute);
 
         Exchange exchange = dispute.getExchange();
-        exchange.setStatus(ExchangeStatus.COMPLETED);
-        if (exchange.getCompletedAt() == null) {
-            exchange.setCompletedAt(LocalDateTime.now());
+        if (exchange.getStatus() == ExchangeStatus.DISPUTED) {
+            exchangeService.finalizeReturnedExchange(exchange);
         }
-        exchangeRepository.save(exchange);
 
         if (request.status() == DisputeStatus.RESOLVED_FAVOR_FILER) {
             applyViolation(dispute, exchange);
@@ -136,18 +136,17 @@ public class DisputeService {
 
         boolean filedByOwner = dispute.getFiledBy().getId().equals(exchange.getOwner().getId());
         User otherParty = filedByOwner ? exchange.getReader() : exchange.getOwner();
+        String title = exchange.getListing().getBookCatalogEntry().getTitle();
         notificationService.notify(
                 dispute.getFiledBy(),
                 NotificationType.DISPUTE_RESOLVED,
                 dispute.getId(),
-                "Скаргу щодо обміну \"" + exchange.getListing().getBookCatalogEntry().getTitle()
-                        + "\" розглянуто модератором");
+                "Скаргу щодо обміну \"" + title + "\" розглянуто модератором");
         notificationService.notify(
                 otherParty,
                 NotificationType.DISPUTE_RESOLVED,
                 dispute.getId(),
-                "Скаргу щодо вас по обміну \"" + exchange.getListing().getBookCatalogEntry().getTitle()
-                        + "\" розглянуто модератором");
+                "Скаргу щодо вас по обміну \"" + title + "\" розглянуто модератором");
 
         return disputeMapper.toResponse(dispute);
     }

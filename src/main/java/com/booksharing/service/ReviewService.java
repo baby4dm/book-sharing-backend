@@ -3,6 +3,8 @@ package com.booksharing.service;
 import com.booksharing.common.exception.ResourceNotFoundException;
 import com.booksharing.dto.req.CreateReviewRequest;
 import com.booksharing.dto.res.ExchangeResponse;
+import com.booksharing.dto.res.UserReviewListResponse;
+import com.booksharing.dto.res.UserReviewResponse;
 import com.booksharing.entity.Exchange;
 import com.booksharing.entity.Review;
 import com.booksharing.entity.User;
@@ -15,6 +17,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -77,5 +81,41 @@ public class ReviewService {
                 "Ви отримали новий відгук від " + author.getName() + ".");
 
         return exchangeService.getById(exchangeId);
+    }
+
+    /** Відгуки про користувача (для профілю), нові спочатку. */
+    @Transactional(readOnly = true)
+    public UserReviewListResponse getForUser(UUID userId, int page, int size) {
+        if (!userRepository.existsById(userId)) {
+            throw new ResourceNotFoundException("Користувача не знайдено: " + userId);
+        }
+
+        Page<Review> result = reviewRepository.findByTargetIdOrderByCreatedAtDesc(
+                userId,
+                PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 50)));
+
+        return new UserReviewListResponse(
+                result.getContent().stream().map(this::toUserReviewResponse).toList(),
+                result.getNumber(),
+                result.getTotalPages(),
+                result.getTotalElements());
+    }
+
+    private UserReviewResponse toUserReviewResponse(Review review) {
+        Exchange exchange = review.getExchange();
+        User author = review.getAuthor();
+        boolean authorIsOwner = exchange.getOwner().getId().equals(author.getId());
+
+        return new UserReviewResponse(
+                review.getId(),
+                exchange.getId(),
+                exchange.getListing().getBookCatalogEntry().getTitle(),
+                author.getId(),
+                author.getName(),
+                author.getAvatarUrl(),
+                authorIsOwner ? "OWNER" : "READER",
+                review.getRating(),
+                review.getComment(),
+                review.getCreatedAt());
     }
 }

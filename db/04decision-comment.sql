@@ -1,0 +1,1 @@
+ALTER TABLE deadline_extension_requests ADD COLUMN IF NOT EXISTS decision_comment TEXT;

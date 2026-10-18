@@ -4,16 +4,17 @@ import com.booksharing.dto.req.AddExchangePhotoRequest;
 import com.booksharing.dto.req.CreateExtensionRequest;
 import com.booksharing.dto.req.CreateShipmentRequest;
 import com.booksharing.dto.req.OpenDisputeRequest;
+import com.booksharing.dto.req.RejectExtensionRequest;
+import com.booksharing.dto.req.ShipWaybillRequest;
 import com.booksharing.dto.req.SubmitPhotosRequest;
 import com.booksharing.dto.res.ExchangeListResponse;
 import com.booksharing.dto.res.ExchangeResponse;
+import com.booksharing.entity.User;
 import com.booksharing.enums.DeliveryMethod;
 import com.booksharing.enums.ExchangeRole;
 import com.booksharing.enums.ExchangeSort;
 import com.booksharing.enums.ExchangeStatus;
 import com.booksharing.service.ExchangeService;
-import com.booksharing.dto.req.ShipWaybillRequest;
-import com.booksharing.entity.User;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -45,6 +46,20 @@ public class ExchangeController {
         return exchangeService.getMyExchanges(currentUser.getId());
     }
 
+    @GetMapping("/my/search")
+    public ExchangeListResponse searchMyExchanges(
+            @AuthenticationPrincipal User currentUser,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "ALL") ExchangeRole role,
+            @RequestParam(required = false) DeliveryMethod deliveryMethod,
+            @RequestParam(required = false) ExchangeStatus status,
+            @RequestParam(defaultValue = "DEADLINE") ExchangeSort sort,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return exchangeService.searchMyExchanges(
+                currentUser.getId(), q, role, deliveryMethod, status, sort, page, size);
+    }
+
     @PostMapping("/{id}/handover-photos")
     public ExchangeResponse submitHandoverPhotos(
             @PathVariable UUID id,
@@ -70,7 +85,9 @@ public class ExchangeController {
     }
 
     @PostMapping("/{id}/confirm-return")
-    public ExchangeResponse confirmReturn(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
+    public ExchangeResponse confirmReturn(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User currentUser) {
         return exchangeService.confirmReturn(id, currentUser.getId());
     }
 
@@ -90,7 +107,7 @@ public class ExchangeController {
         return exchangeService.openDispute(id, currentUser.getId(), request);
     }
 
-    @PostMapping("/{id}/extension-requests")
+    @PostMapping("/{id}/extensions")
     public ExchangeResponse requestExtension(
             @PathVariable UUID id,
             @AuthenticationPrincipal User currentUser,
@@ -98,13 +115,22 @@ public class ExchangeController {
         return exchangeService.requestExtension(id, currentUser.getId(), request);
     }
 
-    @PatchMapping("/{id}/extension-requests/{extensionId}")
-    public ExchangeResponse decideExtension(
+    @PostMapping("/{id}/extensions/{extensionId}/approve")
+    public ExchangeResponse approveExtension(
+            @PathVariable UUID id,
+            @PathVariable UUID extensionId,
+            @AuthenticationPrincipal User currentUser) {
+        return exchangeService.decideExtension(id, extensionId, currentUser.getId(), true, null);
+    }
+
+    @PostMapping("/{id}/extensions/{extensionId}/reject")
+    public ExchangeResponse rejectExtension(
             @PathVariable UUID id,
             @PathVariable UUID extensionId,
             @AuthenticationPrincipal User currentUser,
-            @RequestParam boolean approve) {
-        return exchangeService.decideExtension(id, extensionId, currentUser.getId(), approve);
+            @Valid @RequestBody RejectExtensionRequest request) {
+        return exchangeService.decideExtension(
+                id, extensionId, currentUser.getId(), false, request.comment());
     }
 
     @PostMapping("/{id}/shipment")
@@ -122,19 +148,5 @@ public class ExchangeController {
             @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody ShipWaybillRequest request) {
         return exchangeService.shipWaybill(id, shipmentId, currentUser.getId(), request);
-    }
-
-    @GetMapping("/my/search")
-    public ExchangeListResponse searchMyExchanges(
-            @AuthenticationPrincipal User currentUser,
-            @RequestParam(required = false) String q,
-            @RequestParam(defaultValue = "ALL") ExchangeRole role,
-            @RequestParam(required = false) DeliveryMethod deliveryMethod,
-            @RequestParam(required = false) ExchangeStatus status,
-            @RequestParam(defaultValue = "DEADLINE") ExchangeSort sort,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        return exchangeService.searchMyExchanges(
-                currentUser.getId(), q, role, deliveryMethod, status, sort, page, size);
     }
 }

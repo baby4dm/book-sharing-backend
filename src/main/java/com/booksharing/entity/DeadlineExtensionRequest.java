@@ -66,4 +66,7 @@ public class DeadlineExtensionRequest {
 
     @Column(name = "decided_at")
     private LocalDateTime decidedAt;
+
+    @Column(name = "decision_comment", columnDefinition = "text")
+    private String decisionComment;
 }

@@ -8,7 +8,7 @@ import java.time.LocalDate;
 public record CreateExtensionRequest(
         @NotNull(message = "Потрібно вказати новий бажаний дедлайн")
         @Future(message = "Новий дедлайн має бути в майбутньому")
-        LocalDate requestedNewDeadline,
+        LocalDate newDeadline,
 
         @Size(max = 1000)
         String comment) {

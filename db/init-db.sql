@@ -181,7 +181,8 @@ CREATE TABLE deadline_extension_requests (
                                              status extension_status DEFAULT 'PENDING',
                                              comment TEXT,
                                              created_at TIMESTAMP DEFAULT now(),
-                                             decided_at TIMESTAMP
+                                             decided_at TIMESTAMP,
+                                             decision_comment TEXT
 );
 
 -- ==========================================================

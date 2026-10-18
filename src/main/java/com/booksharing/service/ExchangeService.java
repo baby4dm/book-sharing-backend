@@ -6,18 +6,13 @@ import com.booksharing.dto.res.*;
 import com.booksharing.entity.*;
 import com.booksharing.entity.Listing;
 import com.booksharing.enums.*;
-import com.booksharing.repository.ListingRepository;
+import com.booksharing.repository.*;
 import com.booksharing.entity.User;
-import com.booksharing.repository.UserRepository;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 
-import com.booksharing.repository.DeadlineExtensionRequestRepository;
-import com.booksharing.repository.ExchangePhotoRepository;
-import com.booksharing.repository.ExchangeRepository;
-import com.booksharing.repository.ReviewRepository;
-import com.booksharing.repository.ShipmentInfoRepository;
 import com.booksharing.spec.ExchangeSpecifications;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -45,6 +40,7 @@ public class ExchangeService {
     private final ListingRepository listingRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final DisputeRepository disputeRepository;
 
     @Transactional(readOnly = true)
     public ExchangeResponse getById(UUID id) {
@@ -196,8 +192,16 @@ public class ExchangeService {
                     exchangeId, ShipmentDirection.TO_OWNER, "Читач ще не відправив книгу назад"));
         }
 
+        finalizeReturnedExchange(exchange);
+        return toResponse(exchange);
+    }
+
+    @Transactional
+    public void finalizeReturnedExchange(Exchange exchange) {
         exchange.setStatus(ExchangeStatus.COMPLETED);
-        exchange.setCompletedAt(LocalDateTime.now());
+        if (exchange.getCompletedAt() == null) {
+            exchange.setCompletedAt(LocalDateTime.now());
+        }
         exchangeRepository.save(exchange);
 
         Listing listing = exchange.getListing();
@@ -208,19 +212,23 @@ public class ExchangeService {
         owner.setBooksGiven(owner.getBooksGiven() + 1);
         userRepository.save(owner);
 
-        User reader = exchange.getReader();
-        reader.setBooksTaken(reader.getBooksTaken() + 1);
         LocalDate effectiveDeadline = exchange.getExtendedDeadline() != null
                 ? exchange.getExtendedDeadline()
                 : exchange.getDeadline();
-        if (!LocalDate.now().isAfter(effectiveDeadline)) {
+        LocalDate returnedOn = exchangePhotoRepository.findByExchangeId(exchange.getId()).stream()
+                .filter(p -> p.getStage() == PhotoStage.RETURN)
+                .map(p -> p.getCreatedAt().toLocalDate())
+                .min(Comparator.naturalOrder())
+                .orElse(LocalDate.now());
+
+        User reader = exchange.getReader();
+        reader.setBooksTaken(reader.getBooksTaken() + 1);
+        if (!returnedOn.isAfter(effectiveDeadline)) {
             reader.setBooksReturnedOnTime(reader.getBooksReturnedOnTime() + 1);
         } else {
             reader.setBooksOverdue(reader.getBooksOverdue() + 1);
         }
         userRepository.save(reader);
-
-        return toResponse(exchange);
     }
 
     /** Фото-доказ до відкриття спору - і власник, і читач можуть додавати. */
@@ -256,11 +264,31 @@ public class ExchangeService {
         requireStatus(exchange, ExchangeStatus.RETURN_PENDING,
                 "Спір можна відкрити лише на етапі очікування повернення");
 
+        boolean alreadyOpen = disputeRepository.findByExchangeId(exchangeId).stream()
+                .anyMatch(d -> d.getStatus() == DisputeStatus.OPEN);
+        if (alreadyOpen) {
+            throw new IllegalStateException("По цьому обміну вже є відкритий спір");
+        }
+
         savePhotos(exchange, exchange.getOwner(), PhotoStage.DISPUTE, request.urls());
 
         exchange.setStatus(ExchangeStatus.DISPUTED);
         exchange.setDisputeReason(request.reason());
         exchangeRepository.save(exchange);
+
+        Dispute dispute = disputeRepository.save(Dispute.builder()
+                .exchange(exchange)
+                .filedBy(exchange.getOwner())
+                .description(request.reason())
+                .status(DisputeStatus.OPEN)
+                .build());
+
+        notificationService.notify(
+                exchange.getReader(),
+                NotificationType.DISPUTE_FILED,
+                dispute.getId(),
+                "Власник відкрив спір щодо повернення книги \""
+                        + exchange.getListing().getBookCatalogEntry().getTitle() + "\"");
 
         return toResponse(exchange);
     }
@@ -277,7 +305,7 @@ public class ExchangeService {
 
         extensionRequestRepository.save(DeadlineExtensionRequest.builder()
                 .exchange(exchange)
-                .requestedNewDeadline(request.requestedNewDeadline())
+                .requestedNewDeadline(request.newDeadline())
                 .comment(request.comment())
                 .status(ExtensionStatus.PENDING)
                 .build());
@@ -294,7 +322,11 @@ public class ExchangeService {
 
     @Transactional
     public ExchangeResponse decideExtension(
-            UUID exchangeId, UUID extensionRequestId, UUID currentUserId, boolean approve) {
+            UUID exchangeId,
+            UUID extensionRequestId,
+            UUID currentUserId,
+            boolean approve,
+            String decisionComment) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
         requireOwner(exchange, currentUserId);
 
@@ -310,10 +342,17 @@ public class ExchangeService {
 
         extension.setStatus(approve ? ExtensionStatus.APPROVED : ExtensionStatus.REJECTED);
         extension.setDecidedAt(LocalDateTime.now());
+        if (!approve && decisionComment != null && !decisionComment.isBlank()) {
+            extension.setDecisionComment(decisionComment.trim());
+        }
         extensionRequestRepository.save(extension);
 
         if (approve) {
             exchange.setExtendedDeadline(extension.getRequestedNewDeadline());
+            if (exchange.getStatus() == ExchangeStatus.OVERDUE
+                    && !extension.getRequestedNewDeadline().isBefore(LocalDate.now())) {
+                exchange.setStatus(ExchangeStatus.IN_READING);
+            }
             exchangeRepository.save(exchange);
         }
 
@@ -509,7 +548,8 @@ public class ExchangeService {
                 .findByExchangeId(exchange.getId()).stream()
                 .map(e -> new DeadlineExtensionResponse(
                         e.getId(), e.getRequestedNewDeadline(), e.getStatus(),
-                        e.getComment(), e.getCreatedAt(), e.getDecidedAt()))
+                        e.getComment(), e.getCreatedAt(), e.getDecidedAt(),
+                        e.getDecisionComment()))
                 .toList();
 
         List<ExchangeReviewResponse> reviews = reviewRepository
@@ -526,6 +566,11 @@ public class ExchangeService {
                 .toList();
 
         var book = exchange.getListing().getBookCatalogEntry();
+        ExchangeDisputeResponse dispute = disputeRepository
+                .findByExchangeId(exchange.getId()).stream()
+                .max(Comparator.comparing(Dispute::getCreatedAt))
+                .map(this::toDisputeResponse)
+                .orElse(null);
 
         return new ExchangeResponse(
                 exchange.getId(),
@@ -551,7 +596,7 @@ public class ExchangeService {
                 book.getCoverUrl(),
                 toParticipant(exchange.getOwner()),
                 toParticipant(exchange.getReader()),
-                reviews);
+                reviews,dispute);
     }
 
     private ExchangePhotoResponse toPhotoResponse(ExchangePhoto photo) {
@@ -574,5 +619,17 @@ public class ExchangeService {
                 user.getBooksGiven() == null ? 0 : user.getBooksGiven(),
                 user.getBooksTaken() == null ? 0 : user.getBooksTaken(),
                 user.getBooksOverdue() == null ? 0 : user.getBooksOverdue());
+    }
+
+    private ExchangeDisputeResponse toDisputeResponse(Dispute dispute) {
+        return new ExchangeDisputeResponse(
+                dispute.getId(),
+                dispute.getFiledBy().getId(),
+                dispute.getDescription(),
+                dispute.getStatus(),
+                dispute.getResolutionComment(),
+                dispute.getModerator() == null ? null : dispute.getModerator().getName(),
+                dispute.getCreatedAt(),
+                dispute.getResolvedAt());
     }
 }

@@ -3,6 +3,9 @@ package com.booksharing.repository;
 import com.booksharing.entity.Review;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,4 +20,12 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
 
     @Query("select avg(r.rating) from Review r where r.target.id = :targetId")
     Double averageRatingByTargetId(@Param("targetId") UUID targetId);
+
+    @EntityGraph(attributePaths = {
+            "author",
+            "exchange",
+            "exchange.owner",
+            "exchange.listing",
+            "exchange.listing.bookCatalogEntry"})
+    Page<Review> findByTargetIdOrderByCreatedAtDesc(UUID targetId, Pageable pageable);
 }
