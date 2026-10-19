@@ -1,6 +1,5 @@
 package com.booksharing.config;
 
-import com.booksharing.controller.ChatWebSocketController;
 import com.booksharing.security.StompAuthChannelInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,12 +10,6 @@ import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBr
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
-/**
- * Клієнт підключається на {@code /ws}, шле повідомлення на
- * {@code /app/chat/{chatRoomId}/send} (обробляє {@link
- * ChatWebSocketController}), отримує їх на
- * {@code /topic/chat/{chatRoomId}}.
- */
 @Configuration
 @EnableWebSocketMessageBroker
 @RequiredArgsConstructor
@@ -34,12 +27,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker("/topic");
+        registry.enableSimpleBroker("/topic", "/queue");
         registry.setApplicationDestinationPrefixes("/app");
+        registry.setUserDestinationPrefix("/user");
     }
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
         registration.interceptors(stompAuthChannelInterceptor);
     }
+
 }

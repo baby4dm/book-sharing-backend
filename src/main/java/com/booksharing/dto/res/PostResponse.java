@@ -11,5 +11,7 @@ public record PostResponse(
         String content,
         String photoUrl,
         long commentsCount,
+        long likesCount,
+        boolean likedByMe,
         LocalDateTime createdAt) {
 }

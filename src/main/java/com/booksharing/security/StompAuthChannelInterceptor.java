@@ -15,13 +15,7 @@ import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.stereotype.Component;
 
-/**
- * HTTP-хендшейк WebSocket не завжди несе {@code Authorization}-заголовок
- * так само, як звичайний REST-запит (залежить від STOMP-клієнта в
- * браузері) - тому автентифікація відбувається не на хендшейку, а на
- * самому STOMP {@code CONNECT}-фреймі, де JS-клієнт явно передає токен
- * як native header. Це стандартний підхід для JWT + STOMP.
- */
+
 @Component
 @RequiredArgsConstructor
 public class StompAuthChannelInterceptor implements ChannelInterceptor {
@@ -31,8 +25,11 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+        if (accessor == null) {
+            return message;
+        }
 
-        if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())) {
+        if (StompCommand.CONNECT.equals(accessor.getCommand())) {
             String authHeader = accessor.getFirstNativeHeader(HttpHeaders.AUTHORIZATION);
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 throw new MessagingException("Відсутній токен авторизації для WebSocket-з'єднання");
@@ -40,11 +37,19 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
             String token = authHeader.substring(7);
             try {
                 UUID userId = jwtService.extractUserId(token);
-                // принципал WebSocket-сесії - лише userId (рядком); повний User
-                // підвантажується в ChatWebSocketController за потреби
                 accessor.setUser(new UsernamePasswordAuthenticationToken(userId.toString(), null, List.of()));
             } catch (JwtException ex) {
                 throw new MessagingException("Токен недійсний або протермінований");
+            }
+        }
+
+        if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
+            String destination = accessor.getDestination();
+            if (accessor.getUser() == null) {
+                throw new MessagingException("Спершу потрібно авторизуватися");
+            }
+            if (destination == null || !destination.startsWith("/user/queue/")) {
+                throw new MessagingException("Підписка на " + destination + " заборонена");
             }
         }
 

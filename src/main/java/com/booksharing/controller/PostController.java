@@ -1,12 +1,13 @@
 package com.booksharing.controller;
 
-import com.booksharing.dto.res.PostResponse;
-import com.booksharing.dto.res.CommentResponse;
 import com.booksharing.dto.req.CreateCommentRequest;
 import com.booksharing.dto.req.CreatePostRequest;
-import com.booksharing.service.FeedService;
+import com.booksharing.dto.res.CommentResponse;
+import com.booksharing.dto.res.PostLikeResponse;
+import com.booksharing.dto.res.PostResponse;
 import com.booksharing.entity.User;
 import com.booksharing.enums.UserRole;
+import com.booksharing.service.FeedService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -33,8 +35,10 @@ public class PostController {
     private final FeedService feedService;
 
     @GetMapping
-    public Page<PostResponse> getFeed(@PageableDefault(size = 20) Pageable pageable) {
-        return feedService.getFeed(pageable);
+    public Page<PostResponse> getFeed(
+            @PageableDefault(size = 10) Pageable pageable,
+            @AuthenticationPrincipal User currentUser) {
+        return feedService.getFeed(pageable, currentUser);
     }
 
     @PostMapping
@@ -48,8 +52,19 @@ public class PostController {
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deletePost(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
-        boolean isModerator = currentUser.getRole() == UserRole.MODERATOR || currentUser.getRole() == UserRole.ADMIN;
+        boolean isModerator = currentUser.getRole() == UserRole.MODERATOR
+                || currentUser.getRole() == UserRole.ADMIN;
         feedService.deletePost(id, currentUser.getId(), isModerator);
+    }
+
+    @PutMapping("/{id}/like")
+    public PostLikeResponse like(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
+        return feedService.likePost(id, currentUser);
+    }
+
+    @DeleteMapping("/{id}/like")
+    public PostLikeResponse unlike(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
+        return feedService.unlikePost(id, currentUser);
     }
 
     @GetMapping("/{id}/comments")

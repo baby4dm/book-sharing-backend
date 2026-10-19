@@ -94,7 +94,6 @@ public class RequestService {
         return requestMapper.toResponse(entity);
     }
 
-    /** Видно всім, не лише власнику - учасники черги бачать повну картину. */
     @Transactional(readOnly = true)
     public List<RequestResponse> getQueueForListing(UUID listingId) {
         return toResponses(requestRepository.findByListingIdOrderByCreatedAtAsc(listingId));
@@ -108,7 +107,6 @@ public class RequestService {
                 search, deliveryMethod, status, sort, page, size);
     }
 
-    /** "Вхідні" заявки - на всі оголошення, де поточний користувач власник. */
     @Transactional(readOnly = true)
     public RequestListResponse getReceivedRequests(UUID ownerId, String search,
                                                    DeliveryMethod deliveryMethod, RequestStatus status,
@@ -185,11 +183,13 @@ public class RequestService {
                 .build();
         exchange = exchangeRepository.save(exchange);
 
-        chatRoomRepository.save(ChatRoom.builder()
-                .exchange(exchange)
-                .userA(listing.getOwner())
-                .userB(request.getRequester())
-                .build());
+        if (chatRoomRepository.findBetween(
+                listing.getOwner().getId(), request.getRequester().getId()).isEmpty()) {
+            chatRoomRepository.save(ChatRoom.builder()
+                    .userA(listing.getOwner())
+                    .userB(request.getRequester())
+                    .build());
+        }
 
         notificationService.notify(
                 request.getRequester(),
