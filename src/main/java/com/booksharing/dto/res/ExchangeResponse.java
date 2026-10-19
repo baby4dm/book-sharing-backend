@@ -32,5 +32,11 @@ public record ExchangeResponse(
         ExchangeParticipantResponse owner,
         ExchangeParticipantResponse reader,
         List<ExchangeReviewResponse> reviews,
-        ExchangeDisputeResponse dispute) {
+        Integer readingDays,
+        LocalDateTime readingStartedAt,
+        Integer readingPausedDays,
+        LocalDate dueDate,
+        LocalDateTime returnPreparedAt,
+        LocalDateTime returnedAt,
+        boolean readingPaused) {
 }

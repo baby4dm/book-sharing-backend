@@ -13,7 +13,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
@@ -25,13 +24,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcType;
 import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
 
-/**
- * Заявка на книгу. Кілька заявок на один {@link Listing} утворюють чергу:
- * усі статуси {@code PENDING} видно власнику одночасно, і подавати нові
- * заявки можна навіть якщо одна вже {@code ACTIVE} (див. розділ "Заявка →
- * Черга → Обмін" у флоу сервісу). Мапиться на таблицю {@code requests}
- * (01-init-db.sql).
- */
+
 @Entity
 @Table(name = "requests")
 @Getter
@@ -54,12 +47,9 @@ public class Request {
     @JoinColumn(name = "requester_id", nullable = false)
     private User requester;
 
-    @Column(name = "desired_deadline", nullable = false)
-    private LocalDate desiredDeadline;
+    @Column(name = "reading_days", nullable = false)
+    private Integer readingDays;
 
-    // конкретний спосіб доставки, обраний читачем із тих, що підтримує
-    // Listing (там може бути кілька); саме це значення перейде в
-    // Exchange.deliveryMethod при підтвердженні заявки
     @Enumerated(EnumType.STRING)
     @JdbcType(PostgreSQLEnumJdbcType.class)
     @Column(name = "preferred_delivery_method", nullable = false, columnDefinition = "delivery_method")
@@ -81,8 +71,6 @@ public class Request {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    // не @UpdateTimestamp: decided_at виставляється явно сервісом лише в
-    // момент підтвердження/відхилення, а не при кожному оновленні рядка
     @Column(name = "decided_at")
     private LocalDateTime decidedAt;
 }

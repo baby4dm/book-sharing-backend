@@ -77,7 +77,7 @@ public class RequestService {
         Request entity = Request.builder()
                 .listing(listing)
                 .requester(requester)
-                .desiredDeadline(request.desiredDeadline())
+                .readingDays(request.readingDays())
                 .preferredDeliveryMethod(deliveryMethod)
                 .message(request.message())
                 .status(RequestStatus.PENDING)
@@ -178,7 +178,8 @@ public class RequestService {
                 .owner(listing.getOwner())
                 .reader(request.getRequester())
                 .deliveryMethod(request.getPreferredDeliveryMethod())
-                .deadline(request.getDesiredDeadline())
+                // дедлайну ще немає: відлік почнеться, коли читач підтвердить отримання
+                .readingDays(request.getReadingDays())
                 .status(ExchangeStatus.HANDOVER_PENDING)
                 .build();
         exchange = exchangeRepository.save(exchange);

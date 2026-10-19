@@ -24,12 +24,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcType;
 import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
 
-/**
- * Запит читача на продовження дедлайну повернення книги. Поточний
- * {@code Exchange.deadline} не змінюється, доки власник явно не підтвердить
- * запит (тоді сервіс запише нове значення в {@code Exchange.extendedDeadline}).
- * Мапиться на таблицю {@code deadline_extension_requests} (01-init-db.sql).
- */
+
 @Entity
 @Table(name = "deadline_extension_requests")
 @Getter
@@ -48,7 +43,10 @@ public class DeadlineExtensionRequest {
     @JoinColumn(name = "exchange_id", nullable = false)
     private Exchange exchange;
 
-    @Column(name = "requested_new_deadline", nullable = false)
+    @Column(name = "extra_days", nullable = false)
+    private Integer extraDays;
+
+    @Column(name = "requested_new_deadline")
     private LocalDate requestedNewDeadline;
 
     @Enumerated(EnumType.STRING)
@@ -60,13 +58,13 @@ public class DeadlineExtensionRequest {
     @Column(columnDefinition = "text")
     private String comment;
 
+    @Column(name = "decision_comment", columnDefinition = "text")
+    private String decisionComment;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "decided_at")
     private LocalDateTime decidedAt;
-
-    @Column(name = "decision_comment", columnDefinition = "text")
-    private String decisionComment;
 }

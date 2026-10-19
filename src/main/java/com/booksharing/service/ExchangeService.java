@@ -6,13 +6,18 @@ import com.booksharing.dto.res.*;
 import com.booksharing.entity.*;
 import com.booksharing.entity.Listing;
 import com.booksharing.enums.*;
-import com.booksharing.repository.*;
+import com.booksharing.repository.ListingRepository;
 import com.booksharing.entity.User;
-
+import com.booksharing.repository.UserRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import com.booksharing.repository.DeadlineExtensionRequestRepository;
+import com.booksharing.repository.ExchangePhotoRepository;
+import com.booksharing.repository.ExchangeRepository;
+import com.booksharing.repository.ReviewRepository;
+import com.booksharing.repository.ShipmentInfoRepository;
 import com.booksharing.spec.ExchangeSpecifications;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -22,12 +27,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Стейт-машина обміну: {@code HANDOVER_PENDING → IN_READING → RETURN_PENDING
- * → COMPLETED}, плюс паралельні під-флоу дедлайнів (продовження) і
- * доставки поштою (окремо для кожного напрямку - видача читачу і
- * повернення власнику).
- */
 @Service
 @RequiredArgsConstructor
 public class ExchangeService {
@@ -40,7 +39,6 @@ public class ExchangeService {
     private final ListingRepository listingRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
-    private final DisputeRepository disputeRepository;
 
     @Transactional(readOnly = true)
     public ExchangeResponse getById(UUID id) {
@@ -56,10 +54,6 @@ public class ExchangeService {
                 .toList();
     }
 
-    /**
-     * Крок 1. Власник надсилає від 1 до 4 фото стану книги перед передачею.
-     * Надсилання одноразове: додати фото на цьому етапі вдруге не можна.
-     */
     @Transactional
     public ExchangeResponse submitHandoverPhotos(UUID exchangeId, UUID currentUserId, SubmitPhotosRequest request) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
@@ -75,11 +69,6 @@ public class ExchangeService {
         return toResponse(exchange);
     }
 
-    /**
-     * Крок 3. Читач одним запитом надсилає від 1 до 4 фото при отриманні й
-     * підтверджує отримання. Для доставки поштою це ж позначає посилку
-     * доставленою - окремого підтвердження доставки немає.
-     */
     @Transactional
     public ExchangeResponse confirmReceived(UUID exchangeId, UUID currentUserId, SubmitPhotosRequest request) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
@@ -98,6 +87,8 @@ public class ExchangeService {
 
         savePhotos(exchange, exchange.getReader(), PhotoStage.HANDOVER, request.urls());
 
+        exchange.setReadingStartedAt(LocalDateTime.now());
+        exchange.setDeadline(LocalDate.now().plusDays(exchange.getReadingDays()));
         exchange.setStatus(ExchangeStatus.IN_READING);
         exchangeRepository.save(exchange);
 
@@ -108,12 +99,6 @@ public class ExchangeService {
         return toResponse(exchange);
     }
 
-    /**
-     * Крок 4. Читач надсилає від 1 до 4 фото стану книги перед поверненням -
-     * обмін переходить у {@code RETURN_PENDING}. Дозволено і під час читання,
-     * і в прострочці. Повторно надіслати не можна (після переходу статус
-     * уже не {@code IN_READING}/{@code OVERDUE}).
-     */
     @Transactional
     public ExchangeResponse submitReturnPhotos(UUID exchangeId, UUID currentUserId, SubmitPhotosRequest request) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
@@ -125,6 +110,11 @@ public class ExchangeService {
 
         savePhotos(exchange, exchange.getReader(), PhotoStage.RETURN, request.urls());
 
+        LocalDateTime now = LocalDateTime.now();
+        exchange.setReturnPreparedAt(now);
+        if (exchange.getDeliveryMethod() != DeliveryMethod.MAIL) {
+            exchange.setReturnedAt(now);
+        }
         exchange.setStatus(ExchangeStatus.RETURN_PENDING);
         exchangeRepository.save(exchange);
 
@@ -170,12 +160,7 @@ public class ExchangeService {
                 result.getTotalElements());
     }
 
-    /**
-     * Крок 6. Власник підтверджує фінальне повернення - закриває обмін і
-     * оновлює статистику обох учасників (враховуючи продовжений дедлайн).
-     * Потребує фото читача; для пошти - що читач відправив книгу назад
-     * (це ж позначає зворотну посилку доставленою).
-     */
+
     @Transactional
     public ExchangeResponse confirmReturn(UUID exchangeId, UUID currentUserId) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
@@ -193,15 +178,15 @@ public class ExchangeService {
         }
 
         finalizeReturnedExchange(exchange);
+
         return toResponse(exchange);
     }
+
 
     @Transactional
     public void finalizeReturnedExchange(Exchange exchange) {
         exchange.setStatus(ExchangeStatus.COMPLETED);
-        if (exchange.getCompletedAt() == null) {
-            exchange.setCompletedAt(LocalDateTime.now());
-        }
+        exchange.setCompletedAt(LocalDateTime.now());
         exchangeRepository.save(exchange);
 
         Listing listing = exchange.getListing();
@@ -212,18 +197,13 @@ public class ExchangeService {
         owner.setBooksGiven(owner.getBooksGiven() + 1);
         userRepository.save(owner);
 
-        LocalDate effectiveDeadline = exchange.getExtendedDeadline() != null
-                ? exchange.getExtendedDeadline()
-                : exchange.getDeadline();
-        LocalDate returnedOn = exchangePhotoRepository.findByExchangeId(exchange.getId()).stream()
-                .filter(p -> p.getStage() == PhotoStage.RETURN)
-                .map(p -> p.getCreatedAt().toLocalDate())
-                .min(Comparator.naturalOrder())
-                .orElse(LocalDate.now());
-
         User reader = exchange.getReader();
         reader.setBooksTaken(reader.getBooksTaken() + 1);
-        if (!returnedOn.isAfter(effectiveDeadline)) {
+        LocalDate dueDate = exchange.getDueDate();
+        LocalDate returnedOn = exchange.getReturnedAt() != null
+                ? exchange.getReturnedAt().toLocalDate()
+                : LocalDate.now();
+        if (dueDate == null || !returnedOn.isAfter(dueDate)) {
             reader.setBooksReturnedOnTime(reader.getBooksReturnedOnTime() + 1);
         } else {
             reader.setBooksOverdue(reader.getBooksOverdue() + 1);
@@ -231,7 +211,6 @@ public class ExchangeService {
         userRepository.save(reader);
     }
 
-    /** Фото-доказ до відкриття спору - і власник, і читач можуть додавати. */
     @Transactional
     public ExchangeResponse addDisputePhoto(UUID exchangeId, UUID currentUserId, AddExchangePhotoRequest request) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
@@ -252,11 +231,6 @@ public class ExchangeService {
         return toResponse(exchange);
     }
 
-    /**
-     * Власник відкриває спір замість підтвердження повернення - вимагає
-     * хоча б одне фото-доказ ({@link #addDisputePhoto}), щоб не можна
-     * було відкрити спір "голослівно", без жодного матеріалу для розгляду.
-     */
     @Transactional
     public ExchangeResponse openDispute(UUID exchangeId, UUID currentUserId, OpenDisputeRequest request) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
@@ -264,31 +238,11 @@ public class ExchangeService {
         requireStatus(exchange, ExchangeStatus.RETURN_PENDING,
                 "Спір можна відкрити лише на етапі очікування повернення");
 
-        boolean alreadyOpen = disputeRepository.findByExchangeId(exchangeId).stream()
-                .anyMatch(d -> d.getStatus() == DisputeStatus.OPEN);
-        if (alreadyOpen) {
-            throw new IllegalStateException("По цьому обміну вже є відкритий спір");
-        }
-
         savePhotos(exchange, exchange.getOwner(), PhotoStage.DISPUTE, request.urls());
 
         exchange.setStatus(ExchangeStatus.DISPUTED);
         exchange.setDisputeReason(request.reason());
         exchangeRepository.save(exchange);
-
-        Dispute dispute = disputeRepository.save(Dispute.builder()
-                .exchange(exchange)
-                .filedBy(exchange.getOwner())
-                .description(request.reason())
-                .status(DisputeStatus.OPEN)
-                .build());
-
-        notificationService.notify(
-                exchange.getReader(),
-                NotificationType.DISPUTE_FILED,
-                dispute.getId(),
-                "Власник відкрив спір щодо повернення книги \""
-                        + exchange.getListing().getBookCatalogEntry().getTitle() + "\"");
 
         return toResponse(exchange);
     }
@@ -302,10 +256,18 @@ public class ExchangeService {
                 && exchange.getStatus() != ExchangeStatus.OVERDUE) {
             throw new IllegalStateException("Продовження дедлайну можна запросити лише під час читання");
         }
+        if (exchange.getDeadline() == null) {
+            throw new IllegalStateException("Термін читання ще не почався");
+        }
+        boolean hasPending = extensionRequestRepository.findByExchangeId(exchangeId).stream()
+                .anyMatch(e -> e.getStatus() == ExtensionStatus.PENDING);
+        if (hasPending) {
+            throw new IllegalStateException("Попередній запит на продовження ще не розглянуто");
+        }
 
         extensionRequestRepository.save(DeadlineExtensionRequest.builder()
                 .exchange(exchange)
-                .requestedNewDeadline(request.newDeadline())
+                .extraDays(request.extraDays())
                 .comment(request.comment())
                 .status(ExtensionStatus.PENDING)
                 .build());
@@ -314,7 +276,7 @@ public class ExchangeService {
                 exchange.getOwner(),
                 NotificationType.EXTENSION_REQUESTED,
                 exchange.getId(),
-                "Читач запросив продовження дедлайну для \""
+                "Читач просить продовжити читання на " + request.extraDays() + " дн. для \""
                         + exchange.getListing().getBookCatalogEntry().getTitle() + "\"");
 
         return toResponse(exchange);
@@ -322,10 +284,7 @@ public class ExchangeService {
 
     @Transactional
     public ExchangeResponse decideExtension(
-            UUID exchangeId,
-            UUID extensionRequestId,
-            UUID currentUserId,
-            boolean approve,
+            UUID exchangeId, UUID extensionRequestId, UUID currentUserId, boolean approve,
             String decisionComment) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
         requireOwner(exchange, currentUserId);
@@ -342,17 +301,18 @@ public class ExchangeService {
 
         extension.setStatus(approve ? ExtensionStatus.APPROVED : ExtensionStatus.REJECTED);
         extension.setDecidedAt(LocalDateTime.now());
-        if (!approve && decisionComment != null && !decisionComment.isBlank()) {
-            extension.setDecisionComment(decisionComment.trim());
-        }
+        extension.setDecisionComment(
+                decisionComment == null || decisionComment.isBlank() ? null : decisionComment.trim());
         extensionRequestRepository.save(extension);
 
         if (approve) {
-            exchange.setExtendedDeadline(extension.getRequestedNewDeadline());
-            if (exchange.getStatus() == ExchangeStatus.OVERDUE
-                    && !extension.getRequestedNewDeadline().isBefore(LocalDate.now())) {
-                exchange.setStatus(ExchangeStatus.IN_READING);
-            }
+            LocalDate base = exchange.getExtendedDeadline() != null
+                    ? exchange.getExtendedDeadline()
+                    : exchange.getDeadline();
+            LocalDate newDeadline = base.plusDays(extension.getExtraDays());
+            extension.setRequestedNewDeadline(newDeadline);
+            extensionRequestRepository.save(extension);
+            exchange.setExtendedDeadline(newDeadline);
             exchangeRepository.save(exchange);
         }
 
@@ -365,10 +325,6 @@ public class ExchangeService {
         return toResponse(exchange);
     }
 
-    /**
-     * Подається отримувачем посилки (не відправником): для {@code TO_READER}
-     * - читачем, для {@code TO_OWNER} (при поверненні) - власником.
-     */
     @Transactional
     public ExchangeResponse createShipment(UUID exchangeId, UUID currentUserId, CreateShipmentRequest request) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
@@ -402,6 +358,15 @@ public class ExchangeService {
             throw new IllegalStateException("Відправлення для цього напрямку вже створено");
         }
 
+        if (request.direction() == ShipmentDirection.TO_OWNER && exchange.getReturnPreparedAt() != null) {
+            long waitedDays = java.time.temporal.ChronoUnit.DAYS.between(
+                    exchange.getReturnPreparedAt().toLocalDate(), LocalDate.now());
+            if (waitedDays > 0) {
+                exchange.setReadingPausedDays(exchange.getReadingPausedDays() + (int) waitedDays);
+                exchangeRepository.save(exchange);
+            }
+        }
+
         shipmentInfoRepository.save(ShipmentInfo.builder()
                 .exchange(exchange)
                 .direction(request.direction())
@@ -416,7 +381,6 @@ public class ExchangeService {
         return toResponse(exchange);
     }
 
-    /** Відправник (протилежна сторона від отримувача цього напрямку) вантажить накладну. */
     @Transactional
     public ExchangeResponse shipWaybill(
             UUID exchangeId, UUID shipmentId, UUID currentUserId, ShipWaybillRequest request) {
@@ -442,6 +406,11 @@ public class ExchangeService {
         shipment.setStatus(ShipmentStatus.SHIPPED);
         shipment.setShippedAt(LocalDateTime.now());
         shipmentInfoRepository.save(shipment);
+
+        if (shipment.getDirection() == ShipmentDirection.TO_OWNER) {
+            exchange.setReturnedAt(shipment.getShippedAt());
+            exchangeRepository.save(exchange);
+        }
 
         return toResponse(exchange);
     }
@@ -547,9 +516,8 @@ public class ExchangeService {
         List<DeadlineExtensionResponse> extensions = extensionRequestRepository
                 .findByExchangeId(exchange.getId()).stream()
                 .map(e -> new DeadlineExtensionResponse(
-                        e.getId(), e.getRequestedNewDeadline(), e.getStatus(),
-                        e.getComment(), e.getCreatedAt(), e.getDecidedAt(),
-                        e.getDecisionComment()))
+                        e.getId(), e.getExtraDays(), e.getRequestedNewDeadline(), e.getStatus(),
+                        e.getComment(), e.getDecisionComment(), e.getCreatedAt(), e.getDecidedAt()))
                 .toList();
 
         List<ExchangeReviewResponse> reviews = reviewRepository
@@ -566,11 +534,6 @@ public class ExchangeService {
                 .toList();
 
         var book = exchange.getListing().getBookCatalogEntry();
-        ExchangeDisputeResponse dispute = disputeRepository
-                .findByExchangeId(exchange.getId()).stream()
-                .max(Comparator.comparing(Dispute::getCreatedAt))
-                .map(this::toDisputeResponse)
-                .orElse(null);
 
         return new ExchangeResponse(
                 exchange.getId(),
@@ -596,7 +559,22 @@ public class ExchangeService {
                 book.getCoverUrl(),
                 toParticipant(exchange.getOwner()),
                 toParticipant(exchange.getReader()),
-                reviews,dispute);
+                reviews,
+                exchange.getReadingDays(),
+                exchange.getReadingStartedAt(),
+                exchange.getReadingPausedDays(),
+                exchange.getDueDate(),
+                exchange.getReturnPreparedAt(),
+                exchange.getReturnedAt(),
+                isReadingPaused(exchange, shipments));
+    }
+
+    private static boolean isReadingPaused(Exchange exchange, List<ShipmentInfoResponse> shipments) {
+        return exchange.getDeliveryMethod() == DeliveryMethod.MAIL
+                && exchange.getStatus() == ExchangeStatus.RETURN_PENDING
+                && exchange.getReturnPreparedAt() != null
+                && exchange.getReturnedAt() == null
+                && shipments.stream().noneMatch(s -> s.direction() == ShipmentDirection.TO_OWNER);
     }
 
     private ExchangePhotoResponse toPhotoResponse(ExchangePhoto photo) {
@@ -619,17 +597,5 @@ public class ExchangeService {
                 user.getBooksGiven() == null ? 0 : user.getBooksGiven(),
                 user.getBooksTaken() == null ? 0 : user.getBooksTaken(),
                 user.getBooksOverdue() == null ? 0 : user.getBooksOverdue());
-    }
-
-    private ExchangeDisputeResponse toDisputeResponse(Dispute dispute) {
-        return new ExchangeDisputeResponse(
-                dispute.getId(),
-                dispute.getFiledBy().getId(),
-                dispute.getDescription(),
-                dispute.getStatus(),
-                dispute.getResolutionComment(),
-                dispute.getModerator() == null ? null : dispute.getModerator().getName(),
-                dispute.getCreatedAt(),
-                dispute.getResolvedAt());
     }
 }

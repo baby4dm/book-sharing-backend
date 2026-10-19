@@ -26,14 +26,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcType;
 import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
 
-/**
- * Обмін книгою — центральна сутність бізнес-логіки, породжується з
- * підтвердженої {@link Request} (звʼязок 1:1, request_id UNIQUE у БД).
- * {@code deliveryMethod} тут — скалярне значення (на відміну від
- * {@code Listing.deliveryMethods}, де це масив), тому мапиться напряму
- * як нативний Postgres enum без обхідних рішень.
- * Мапиться на таблицю {@code exchanges} (01-init-db.sql).
- */
 @Entity
 @Table(name = "exchanges")
 @Getter
@@ -69,7 +61,10 @@ public class Exchange {
     @Column(name = "delivery_method", nullable = false, columnDefinition = "delivery_method")
     private DeliveryMethod deliveryMethod;
 
-    @Column(nullable = false)
+    @Column(name = "reading_days", nullable = false)
+    private Integer readingDays;
+
+    @Column
     private LocalDate deadline;
 
     @Column(name = "extended_deadline")
@@ -81,9 +76,6 @@ public class Exchange {
     @Builder.Default
     private ExchangeStatus status = ExchangeStatus.HANDOVER_PENDING;
 
-    // заповнює openDispute() у момент відкриття спору власником; null,
-    // доки спору не було - окреме від disputePhotos (ExchangePhoto зі
-    // stage=DISPUTE), текстове пояснення причини
     @Column(name = "dispute_reason")
     private String disputeReason;
 
@@ -91,8 +83,27 @@ public class Exchange {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    // не автоматичний timestamp: completed_at виставляє сервіс лише в момент
-    // фактичного завершення обміну (підтвердження повернення власником)
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
+
+    @Column(name = "reading_started_at")
+    private LocalDateTime readingStartedAt;
+
+    @Column(name = "return_prepared_at")
+    private LocalDateTime returnPreparedAt;
+
+    @Column(name = "returned_at")
+    private LocalDateTime returnedAt;
+
+    @Column(name = "reading_paused_days", nullable = false)
+    @Builder.Default
+    private Integer readingPausedDays = 0;
+
+    public LocalDate getDueDate() {
+        LocalDate base = extendedDeadline != null ? extendedDeadline : deadline;
+        if (base == null) {
+            return null;
+        }
+        return base.plusDays(readingPausedDays == null ? 0 : readingPausedDays);
+    }
 }

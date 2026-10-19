@@ -3,7 +3,6 @@ package com.booksharing.dto.res;
 import com.booksharing.enums.DeliveryMethod;
 import com.booksharing.enums.RequestStatus;
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -15,7 +14,7 @@ public record RequestResponse(
         String requesterName,
         String requesterAvatarUrl,
         BigDecimal requesterRatingAvg,
-        LocalDate desiredDeadline,
+        Integer readingDays,
         DeliveryMethod preferredDeliveryMethod,
         String message,
         RequestStatus status,
@@ -27,7 +26,7 @@ public record RequestResponse(
     public RequestResponse withExchangeId(UUID exchangeId) {
         return new RequestResponse(
                 id, listingId, listingBookTitle, requesterId, requesterName,
-                requesterAvatarUrl, requesterRatingAvg, desiredDeadline,
+                requesterAvatarUrl, requesterRatingAvg, readingDays,
                 preferredDeliveryMethod, message, status, rejectComment,
                 createdAt, decidedAt, exchangeId);
     }
