@@ -75,17 +75,6 @@ public class ListingService {
         return listingMapper.toResponse(listing, photoUrlsOf(id));
     }
 
-    /**
-     * Пагінація роздвоюється навмисно: коли {@code deliveryMethod} не
-     * заданий - фільтри повністю на рівні БД через {@code Specification},
-     * і LIMIT/OFFSET теж рахує сама БД (ефективний шлях). Коли
-     * {@code deliveryMethod} заданий - його фільтр застосовується в Java
-     * (text[] не фільтрується через Specification, див. коментар у
-     * {@link ListingSpecifications}), тому LIMIT/OFFSET на рівні БД
-     * "відрізав" би елементи ДО цього java-фільтра і зламав би підрахунок
-     * сторінок - тому в цьому випадку пагінація теж рахується вручну,
-     * вже після фільтра.
-     */
     @Transactional(readOnly = true)
     public Page<ListingResponse> search(List<String> genre, List<String> city, List<String> deliveryMethod,
                                         List<ListingStatus> status, String searchText, UUID excludeOwnerId,
@@ -97,6 +86,25 @@ public class ListingService {
                 .and(ListingSpecifications.matchesSearch(searchText))
                 .and(ListingSpecifications.excludeOwner(excludeOwnerId));
 
+        return findFiltered(spec, deliveryMethod, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ListingResponse> getMyListings(UUID ownerId, List<String> genre, List<String> city,
+                                               List<String> deliveryMethod, List<ListingStatus> status,
+                                               String searchText, Pageable pageable) {
+        Specification<Listing> spec = Specification
+                .where(ListingSpecifications.hasOwner(ownerId))
+                .and(ListingSpecifications.hasStatus(status))
+                .and(ListingSpecifications.hasGenre(genre))
+                .and(ListingSpecifications.hasSettlement(city))
+                .and(ListingSpecifications.matchesSearch(searchText));
+
+        return findFiltered(spec, deliveryMethod, pageable);
+    }
+
+    private Page<ListingResponse> findFiltered(Specification<Listing> spec, List<String> deliveryMethod,
+                                               Pageable pageable) {
         if (deliveryMethod == null || deliveryMethod.isEmpty()) {
             return listingRepository.findAll(spec, pageable)
                     .map(l -> listingMapper.toResponse(l, photoUrlsOf(l.getId())));
@@ -200,16 +208,4 @@ public class ListingService {
         return listingRepository.findDistinctSettlementNames();
     }
 
-    /**
-     * "Мої оголошення" - завжди повертає ВСІ статуси власника разом
-     * (включно з ARCHIVED), на відміну від публічного {@link #search}, де
-     * ARCHIVED зазвичай не шукають. Власник має бачити повну картину
-     * своїх книг, не лише активні.
-     */
-    @Transactional(readOnly = true)
-    public Page<ListingResponse> getMyListings(UUID ownerId, Pageable pageable) {
-        Specification<Listing> spec = ListingSpecifications.hasOwner(ownerId);
-        return listingRepository.findAll(spec, pageable)
-                .map(l -> listingMapper.toResponse(l, photoUrlsOf(l.getId())));
-    }
 }

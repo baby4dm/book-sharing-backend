@@ -67,9 +67,12 @@ public class RequestService {
 
         DeliveryMethod deliveryMethod = validateDeliveryMethod(listing, request.preferredDeliveryMethod());
 
+        boolean bookIsBusy = listing.getStatus() == ListingStatus.RESERVED
+                || listing.getStatus() == ListingStatus.IN_EXCHANGE;
         boolean alreadyInQueue = requestRepository.findByListingIdOrderByCreatedAtAsc(listingId).stream()
                 .anyMatch(r -> r.getRequester().getId().equals(requesterId)
-                        && (r.getStatus() == RequestStatus.PENDING || r.getStatus() == RequestStatus.ACTIVE));
+                        && (r.getStatus() == RequestStatus.PENDING
+                        || (r.getStatus() == RequestStatus.ACTIVE && bookIsBusy)));
         if (alreadyInQueue) {
             throw new IllegalStateException("У вас уже є активна заявка на цю книгу");
         }
@@ -178,7 +181,6 @@ public class RequestService {
                 .owner(listing.getOwner())
                 .reader(request.getRequester())
                 .deliveryMethod(request.getPreferredDeliveryMethod())
-                // дедлайну ще немає: відлік почнеться, коли читач підтвердить отримання
                 .readingDays(request.getReadingDays())
                 .status(ExchangeStatus.HANDOVER_PENDING)
                 .build();

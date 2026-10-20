@@ -41,10 +41,6 @@ public class ListingController {
             @RequestParam(required = false) List<String> deliveryMethod,
             @RequestParam(required = false) List<ListingStatus> status,
             @RequestParam(required = false) String search,
-            // errorOnInvalidType = false: цей ендпоінт публічний (permitAll),
-            // тому для гостя тут "анонімний" принципал, не наш User - без
-            // цього прапорця Spring кинув би ClassCastException замість
-            // тихого null
             @AuthenticationPrincipal(errorOnInvalidType = false) User currentUser,
             @PageableDefault(size = 12) Pageable pageable) {
         UUID excludeOwnerId = currentUser == null ? null : currentUser.getId();
@@ -58,9 +54,15 @@ public class ListingController {
 
     @GetMapping("/my")
     public Page<ListingResponse> getMyListings(
+            @RequestParam(required = false) List<String> genre,
+            @RequestParam(required = false) List<String> city,
+            @RequestParam(required = false) List<String> deliveryMethod,
+            @RequestParam(required = false) List<ListingStatus> status,
+            @RequestParam(required = false) String search,
             @AuthenticationPrincipal User currentUser,
             @PageableDefault(size = 12) Pageable pageable) {
-        return listingService.getMyListings(currentUser.getId(), pageable);
+        return listingService.getMyListings(
+                currentUser.getId(), genre, city, deliveryMethod, status, search, pageable);
     }
 
     @GetMapping("/{id}")
