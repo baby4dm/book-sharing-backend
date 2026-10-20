@@ -1,5 +1,7 @@
 package com.booksharing.controller;
 
+import com.booksharing.enums.UserRole;
+import org.springframework.security.access.AccessDeniedException;
 import com.booksharing.dto.req.DecideExtensionRequest;
 import com.booksharing.dto.req.AddExchangePhotoRequest;
 import com.booksharing.dto.req.CreateExtensionRequest;
@@ -37,8 +39,16 @@ public class ExchangeController {
     private final ExchangeService exchangeService;
 
     @GetMapping("/{id}")
-    public ExchangeResponse getById(@PathVariable UUID id) {
-        return exchangeService.getById(id);
+    public ExchangeResponse getById(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
+        ExchangeResponse exchange = exchangeService.getById(id);
+        boolean isParticipant = exchange.ownerId().equals(currentUser.getId())
+                || exchange.readerId().equals(currentUser.getId());
+        boolean isModerator = currentUser.getRole() == UserRole.MODERATOR
+                || currentUser.getRole() == UserRole.ADMIN;
+        if (!isParticipant && !isModerator) {
+            throw new AccessDeniedException("Ви не берете участі в цьому обміні");
+        }
+        return exchange;
     }
 
     @GetMapping("/my")
