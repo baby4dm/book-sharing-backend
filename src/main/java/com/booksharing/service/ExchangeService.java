@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 import com.booksharing.repository.DeadlineExtensionRequestRepository;
+import com.booksharing.repository.DisputeRepository;
 import com.booksharing.repository.ExchangePhotoRepository;
 import com.booksharing.repository.ExchangeRepository;
 import com.booksharing.repository.ReviewRepository;
@@ -40,6 +41,7 @@ public class ExchangeService {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final ExchangeNotifier exchangeNotifier;
+    private final DisputeRepository disputeRepository;
 
     @Transactional(readOnly = true)
     public ExchangeResponse getById(UUID id) {
@@ -188,7 +190,9 @@ public class ExchangeService {
     @Transactional
     public void finalizeReturnedExchange(Exchange exchange) {
         exchange.setStatus(ExchangeStatus.COMPLETED);
-        exchange.setCompletedAt(LocalDateTime.now());
+        if (exchange.getCompletedAt() == null) {
+            exchange.setCompletedAt(LocalDateTime.now());
+        }
         exchangeRepository.save(exchange);
 
         Listing listing = exchange.getListing();
@@ -242,11 +246,32 @@ public class ExchangeService {
         requireStatus(exchange, ExchangeStatus.RETURN_PENDING,
                 "Спір можна відкрити лише на етапі очікування повернення");
 
+        boolean alreadyOpen = disputeRepository.findByExchangeId(exchangeId).stream()
+                .anyMatch(d -> d.getStatus() == DisputeStatus.OPEN);
+        if (alreadyOpen) {
+            throw new IllegalStateException("По цьому обміну вже є відкритий спір");
+        }
+
         savePhotos(exchange, exchange.getOwner(), PhotoStage.DISPUTE, request.urls());
 
         exchange.setStatus(ExchangeStatus.DISPUTED);
         exchange.setDisputeReason(request.reason());
         exchangeRepository.save(exchange);
+
+        // Запис спору — саме його бачить і розглядає модератор
+        Dispute dispute = disputeRepository.save(Dispute.builder()
+                .exchange(exchange)
+                .filedBy(exchange.getOwner())
+                .description(request.reason())
+                .status(DisputeStatus.OPEN)
+                .build());
+
+        notificationService.notify(
+                exchange.getReader(),
+                NotificationType.DISPUTE_FILED,
+                dispute.getId(),
+                exchange.getOwner().getName() + " відкрив(-ла) спір щодо повернення «"
+                        + exchange.getListing().getBookCatalogEntry().getTitle() + "»");
 
         return toResponse(exchange);
     }
@@ -571,7 +596,23 @@ public class ExchangeService {
                 exchange.getDueDate(),
                 exchange.getReturnPreparedAt(),
                 exchange.getReturnedAt(),
-                isReadingPaused(exchange, shipments));
+                isReadingPaused(exchange, shipments),
+                disputeRepository.findByExchangeId(exchange.getId()).stream()
+                        .max(Comparator.comparing(Dispute::getCreatedAt))
+                        .map(ExchangeService::toDisputeResponse)
+                        .orElse(null));
+    }
+
+    private static ExchangeDisputeResponse toDisputeResponse(Dispute dispute) {
+        return new ExchangeDisputeResponse(
+                dispute.getId(),
+                dispute.getFiledBy().getId(),
+                dispute.getDescription(),
+                dispute.getStatus(),
+                dispute.getResolutionComment(),
+                dispute.getModerator() == null ? null : dispute.getModerator().getName(),
+                dispute.getCreatedAt(),
+                dispute.getResolvedAt());
     }
 
     private static boolean isReadingPaused(Exchange exchange, List<ShipmentInfoResponse> shipments) {

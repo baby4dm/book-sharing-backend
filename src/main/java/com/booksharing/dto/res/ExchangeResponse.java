@@ -38,5 +38,6 @@ public record ExchangeResponse(
         LocalDate dueDate,
         LocalDateTime returnPreparedAt,
         LocalDateTime returnedAt,
-        boolean readingPaused) {
+        boolean readingPaused,
+        ExchangeDisputeResponse dispute) {
 }

@@ -21,15 +21,6 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-/**
- * Стратегія автентифікації: OAuth2 Login (Google) видає нашу власну сесію
- * лише на час самого handshake'у (звідси {@code IF_REQUIRED}, а не
- * {@code STATELESS} — Spring Security зберігає тимчасовий authorization
- * request у сесії між редіректом на Google і колбеком; повний
- * {@code STATELESS} зламав би саме цей крок). Усі подальші запити до
- * {@code /api/**} автентифікуються нашим власним {@link JwtAuthenticationFilter}
- * за Bearer-токеном, без сесії.
- */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -47,7 +38,6 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // stateless REST API з Bearer-токенами - класичний CSRF тут не актуальний
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
@@ -55,20 +45,11 @@ public class SecurityConfig {
                         .requestMatchers("/oauth2/**", "/login/**").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/feedback").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        // публічний перегляд без автентифікації: стрічка оголошень і постів
-                        // "Мої оголошення" - особисте, має вимагати автентифікації.
-                        // Правило МАЄ стояти РАНІШЕ за загальний permitAll нижче -
-                        // Spring Security перевіряє правила в порядку оголошення,
-                        // спрацьовує ПЕРШЕ, що збіглося з шляхом запиту
                         .requestMatchers(HttpMethod.GET, "/api/listings/my").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/listings/**", "/api/posts/**").permitAll()
-                        // самі завантажені файли мають бути публічно доступні (це
-                        // просто статичні картинки, показані будь-кому в каталозі) -
-                        // САМ ЗАПИТ НА ЗАВАНТАЖЕННЯ (POST /api/uploads) лишається
-                        // authenticated за замовчуванням (anyRequest().authenticated()
-                        // нижче), тут дозволяємо лише ЧИТАННЯ вже збережених файлів
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2Login(oauth2 -> oauth2
@@ -76,22 +57,6 @@ public class SecurityConfig {
                                 .userService(customOAuth2UserService)
                                 .oidcUserService(customOidcUserService))
                         .successHandler(oAuth2AuthenticationSuccessHandler))
-                // Без цього блоку Spring Security для БУДЬ-ЯКОГО неавторизованого
-                // запиту на /api/** (протермінований/відсутній JWT) автоматично
-                // підставляє LoginUrlAuthenticationEntryPoint - той самий,
-                // що й для браузерного oauth2Login - і повертає 302 редірект
-                // на /login замість чистого 401. Axios-фронтенд очікує саме
-                // 401 (наш response-interceptor ловить його явно), не 302,
-                // тому REST-ендпоінти мають отримати ВЛАСНИЙ entry point,
-                // не той, що призначений для браузерної OAuth2-навігації.
-                // response.setStatus(), НЕ sendError() - sendError() запускає
-                // внутрішній forward на /error (стандартний механізм Spring
-                // Boot для сторінок помилок), а цей forward ЗНОВУ проходить
-                // через весь security filter chain як новий запит. Оскільки
-                // /error не підпадає під /api/**, він потрапляє на ДЕФОЛТНИЙ
-                // entry point (для браузерної навігації) - той самий, що
-                // редіректить на /oauth2/authorization/google. setStatus()
-                // просто виставляє код відповіді напряму, без internal forward.
                 .exceptionHandling(exceptions -> exceptions
                         .defaultAuthenticationEntryPointFor(
                                 (request, response, authException) ->
