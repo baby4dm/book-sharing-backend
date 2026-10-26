@@ -13,7 +13,6 @@ import com.booksharing.entity.ChatRoom;
 import com.booksharing.entity.Exchange;
 import com.booksharing.entity.User;
 import com.booksharing.enums.ExchangeStatus;
-import com.booksharing.enums.NotificationType;
 import com.booksharing.repository.ChatMessageRepository;
 import com.booksharing.repository.ChatRoomRepository;
 import com.booksharing.repository.ExchangeRepository;
@@ -44,7 +43,6 @@ public class ChatService {
     private final ChatMessageRepository chatMessageRepository;
     private final ExchangeRepository exchangeRepository;
     private final UserRepository userRepository;
-    private final NotificationService notificationService;
     private final ChatEventPublisher eventPublisher;
 
     @Transactional(readOnly = true)
@@ -169,11 +167,6 @@ public class ChatService {
             eventPublisher.sendTo(recipient.getId(), read);
             eventPublisher.sendTo(sender.getId(), read);
         }
-        notificationService.notify(
-                recipient,
-                NotificationType.NEW_CHAT_MESSAGE,
-                room.getId(),
-                sender.getName() + " написав(-ла) вам повідомлення");
 
         ChatMessageResponse response = toMessageResponse(message);
         ChatEvent event = ChatEvent.ofMessage(response);
@@ -190,6 +183,7 @@ public class ChatService {
         if (updated > 0) {
             ChatEvent event = ChatEvent.ofRead(chatRoomId, currentUserId, now);
             eventPublisher.sendTo(otherParticipant(room, currentUserId).getId(), event);
+            // власним вкладкам — щоб зник бейдж непрочитаних
             eventPublisher.sendTo(currentUserId, event);
         }
     }

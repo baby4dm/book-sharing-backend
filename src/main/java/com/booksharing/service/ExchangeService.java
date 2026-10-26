@@ -39,6 +39,7 @@ public class ExchangeService {
     private final ListingRepository listingRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final ExchangeNotifier exchangeNotifier;
 
     @Transactional(readOnly = true)
     public ExchangeResponse getById(UUID id) {
@@ -66,6 +67,7 @@ public class ExchangeService {
         }
 
         savePhotos(exchange, exchange.getOwner(), PhotoStage.HANDOVER, request.urls());
+        exchangeNotifier.handoverReady(exchange);
         return toResponse(exchange);
     }
 
@@ -91,6 +93,7 @@ public class ExchangeService {
         exchange.setDeadline(LocalDate.now().plusDays(exchange.getReadingDays()));
         exchange.setStatus(ExchangeStatus.IN_READING);
         exchangeRepository.save(exchange);
+        exchangeNotifier.bookReceived(exchange);
 
         Listing listing = exchange.getListing();
         listing.setStatus(ListingStatus.IN_EXCHANGE);
@@ -117,6 +120,7 @@ public class ExchangeService {
         }
         exchange.setStatus(ExchangeStatus.RETURN_PENDING);
         exchangeRepository.save(exchange);
+        exchangeNotifier.returnStarted(exchange);
 
         return toResponse(exchange);
     }
@@ -160,7 +164,6 @@ public class ExchangeService {
                 result.getTotalElements());
     }
 
-
     @Transactional
     public ExchangeResponse confirmReturn(UUID exchangeId, UUID currentUserId) {
         Exchange exchange = findExchangeOrThrow(exchangeId);
@@ -181,7 +184,6 @@ public class ExchangeService {
 
         return toResponse(exchange);
     }
-
 
     @Transactional
     public void finalizeReturnedExchange(Exchange exchange) {
@@ -209,6 +211,8 @@ public class ExchangeService {
             reader.setBooksOverdue(reader.getBooksOverdue() + 1);
         }
         userRepository.save(reader);
+
+        exchangeNotifier.completed(exchange);
     }
 
     @Transactional
@@ -276,8 +280,9 @@ public class ExchangeService {
                 exchange.getOwner(),
                 NotificationType.EXTENSION_REQUESTED,
                 exchange.getId(),
-                "Читач просить продовжити читання на " + request.extraDays() + " дн. для \""
-                        + exchange.getListing().getBookCatalogEntry().getTitle() + "\"");
+                exchange.getReader().getName() + " просить продовжити читання «"
+                        + exchange.getListing().getBookCatalogEntry().getTitle() + "» на "
+                        + request.extraDays() + " дн.");
 
         return toResponse(exchange);
     }
@@ -316,11 +321,7 @@ public class ExchangeService {
             exchangeRepository.save(exchange);
         }
 
-        notificationService.notify(
-                exchange.getReader(),
-                NotificationType.EXTENSION_DECIDED,
-                exchange.getId(),
-                approve ? "Продовження дедлайну підтверджено" : "У продовженні дедлайну відмовлено");
+        exchangeNotifier.extensionDecided(exchange, approve);
 
         return toResponse(exchange);
     }
@@ -378,6 +379,8 @@ public class ExchangeService {
                 .status(ShipmentStatus.PENDING)
                 .build());
 
+        exchangeNotifier.shipmentAddressAdded(exchange, request.direction());
+
         return toResponse(exchange);
     }
 
@@ -411,6 +414,8 @@ public class ExchangeService {
             exchange.setReturnedAt(shipment.getShippedAt());
             exchangeRepository.save(exchange);
         }
+
+        exchangeNotifier.bookShipped(exchange, shipment);
 
         return toResponse(exchange);
     }

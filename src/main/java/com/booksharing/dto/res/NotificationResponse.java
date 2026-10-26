@@ -1,7 +1,6 @@
 package com.booksharing.dto.res;
 
 import com.booksharing.enums.NotificationType;
-
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -10,6 +9,7 @@ public record NotificationResponse(
         NotificationType type,
         UUID referenceId,
         String message,
-        boolean isRead,
-        LocalDateTime createdAt) {
+        boolean read,
+        LocalDateTime createdAt,
+        String link) {
 }
