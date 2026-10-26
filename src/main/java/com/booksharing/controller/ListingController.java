@@ -13,6 +13,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -63,6 +64,16 @@ public class ListingController {
             @PageableDefault(size = 12) Pageable pageable) {
         return listingService.getMyListings(
                 currentUser.getId(), genre, city, deliveryMethod, status, search, pageable);
+    }
+
+    @GetMapping("/by-owner/{ownerId}")
+    public Page<ListingResponse> getByOwner(
+            @PathVariable UUID ownerId,
+            @PageableDefault(size = 8, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        return listingService.getMyListings(
+                ownerId, null, null, null,
+                List.of(ListingStatus.AVAILABLE, ListingStatus.RESERVED, ListingStatus.IN_EXCHANGE),
+                null, pageable);
     }
 
     @GetMapping("/{id}")
