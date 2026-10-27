@@ -10,6 +10,8 @@ import com.booksharing.entity.Restriction;
 import com.booksharing.entity.User;
 import com.booksharing.enums.DisputeStatus;
 import com.booksharing.enums.ExchangeStatus;
+import com.booksharing.enums.ModerationActionType;
+import com.booksharing.enums.ModerationTargetType;
 import com.booksharing.enums.NotificationType;
 import com.booksharing.enums.RestrictionType;
 import com.booksharing.enums.UserRole;
@@ -21,6 +23,7 @@ import com.booksharing.repository.RestrictionRepository;
 import com.booksharing.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
@@ -34,6 +37,12 @@ public class DisputeService {
 
     private static final long TEMPORARY_RESTRICTION_DAYS = 14;
 
+    private static final Map<DisputeStatus, String> RESOLUTION_LABELS = Map.of(
+            DisputeStatus.RESOLVED_FAVOR_FILER, "На користь заявника",
+            DisputeStatus.RESOLVED_FAVOR_OTHER, "На користь іншої сторони",
+            DisputeStatus.DISMISSED, "Відхилено",
+            DisputeStatus.OPEN, "Відкрита");
+
     private final DisputeRepository disputeRepository;
     private final RestrictionRepository restrictionRepository;
     private final ExchangeRepository exchangeRepository;
@@ -41,6 +50,7 @@ public class DisputeService {
     private final NotificationService notificationService;
     private final DisputeMapper disputeMapper;
     private final ExchangeService exchangeService;
+    private final ModerationLogService moderationLog;
 
     @Transactional
     public DisputeResponse fileDispute(UUID exchangeId, UUID currentUserId, CreateDisputeRequest request) {
@@ -134,6 +144,11 @@ public class DisputeService {
             applyViolation(dispute, exchange);
         }
 
+        moderationLog.log(moderator, ModerationActionType.RESOLVE_DISPUTE, ModerationTargetType.DISPUTE,
+                dispute.getId(), dispute.getFiledBy(), request.resolutionComment(),
+                RESOLUTION_LABELS.get(request.status()) + " · «"
+                        + exchange.getListing().getBookCatalogEntry().getTitle() + "»");
+
         boolean filedByOwner = dispute.getFiledBy().getId().equals(exchange.getOwner().getId());
         User otherParty = filedByOwner ? exchange.getReader() : exchange.getOwner();
         String title = exchange.getListing().getBookCatalogEntry().getTitle();
@@ -174,6 +189,15 @@ public class DisputeService {
                 .dispute(dispute)
                 .endsAt(endsAt)
                 .build());
+
+        notificationService.notify(
+                violator,
+                NotificationType.ACCOUNT_RESTRICTED,
+                null,
+                type == RestrictionType.TEMPORARY
+                        ? "За рішенням модератора по скарзі ваш обліковий запис обмежено на "
+                                + TEMPORARY_RESTRICTION_DAYS + " днів"
+                        : "За рішенням модератора по скарзі ваш обліковий запис заблоковано");
     }
 
     private User requireParticipant(Exchange exchange, UUID currentUserId) {

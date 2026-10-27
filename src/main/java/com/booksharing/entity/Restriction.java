@@ -23,13 +23,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcType;
 import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
 
-/**
- * Обмеження облікового запису користувача (тимчасове чи повне),
- * зазвичай породжене рішенням модератора по {@link Dispute}, але
- * {@code dispute} може бути {@code null} — наприклад при простроченні
- * без окремої скарги.
- * Мапиться на таблицю {@code restrictions} (01-init-db.sql).
- */
 @Entity
 @Table(name = "restrictions")
 @Getter
@@ -64,7 +57,17 @@ public class Restriction {
     @Column(name = "starts_at", nullable = false, updatable = false)
     private LocalDateTime startsAt;
 
-    // null = безстрокове (для PERMANENT) або ще не визначено
     @Column(name = "ends_at")
     private LocalDateTime endsAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by")
+    private User createdBy;
+
+    @Column(name = "lifted_at")
+    private LocalDateTime liftedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "lifted_by")
+    private User liftedBy;
 }

@@ -70,15 +70,17 @@ public class ListingController {
     public Page<ListingResponse> getByOwner(
             @PathVariable UUID ownerId,
             @PageableDefault(size = 8, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        return listingService.getMyListings(
+        return listingService.getByOwner(
                 ownerId, null, null, null,
                 List.of(ListingStatus.AVAILABLE, ListingStatus.RESERVED, ListingStatus.IN_EXCHANGE),
-                null, pageable);
+                null, false, pageable);
     }
 
     @GetMapping("/{id}")
-    public ListingResponse getById(@PathVariable UUID id) {
-        return listingService.getById(id);
+    public ListingResponse getById(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal(errorOnInvalidType = false) User currentUser) {
+        return listingService.getById(id, currentUser);
     }
 
     @PostMapping

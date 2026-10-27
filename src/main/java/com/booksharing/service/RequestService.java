@@ -50,9 +50,11 @@ public class RequestService {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final RequestMapper requestMapper;
+    private final AccountGuard accountGuard;
 
     @Transactional
     public RequestResponse submit(UUID listingId, UUID requesterId, CreateRequestRequest request) {
+        accountGuard.requireCanCreateContent(requesterId);
         Listing listing = listingRepository.findById(listingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Оголошення не знайдено: " + listingId));
         User requester = userRepository.findById(requesterId)
@@ -60,6 +62,9 @@ public class RequestService {
 
         if (listing.getStatus() == ListingStatus.ARCHIVED) {
             throw new IllegalStateException("Оголошення знято з публікації, заявки більше не приймаються");
+        }
+        if (listing.isHidden()) {
+            throw new IllegalStateException("Оголошення приховано модератором, заявки не приймаються");
         }
         if (listing.getOwner().getId().equals(requesterId)) {
             throw new IllegalArgumentException("Не можна подати заявку на власну книгу");

@@ -20,28 +20,42 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final UserMapper userMapper;
+    private final UserStatsService userStatsService;
 
+    @Transactional(readOnly = true)
     public UserPublicProfileResponse getPublicProfile(UUID userId) {
         User user = findUserOrThrow(userId);
-        return userMapper.toPublicProfile(user);
+        return withStats(userMapper.toPublicProfile(user), userStatsService.statsFor(user));
     }
 
+    @Transactional(readOnly = true)
     public UserMeResponse getMyProfile(User currentUser) {
-        return userMapper.toMeResponse(currentUser);
+        return withStats(userMapper.toMeResponse(currentUser), userStatsService.statsFor(currentUser));
     }
 
-    /**
-     * Приймає лише {@code currentUserId}, а не сам detached {@code User}
-     * з {@code SecurityContext} — сутність там завантажена в окремій,
-     * уже закритій транзакції фільтра, тому для оновлення її потрібно
-     * перезавантажити тут, у власній транзакції сервісу.
-     */
     @Transactional
     public UserMeResponse updateMyProfile(UUID currentUserId, UpdateUserProfileRequest request) {
         User user = findUserOrThrow(currentUserId);
         userMapper.updateEntityFromRequest(request, user);
         user = userRepository.save(user);
-        return userMapper.toMeResponse(user);
+        return withStats(userMapper.toMeResponse(user), userStatsService.statsFor(user));
+    }
+
+    static UserPublicProfileResponse withStats(
+            UserPublicProfileResponse p, UserStatsService.UserExchangeStats s) {
+        return new UserPublicProfileResponse(
+                p.id(), p.name(), p.avatarUrl(), p.settlementType(), p.region(), p.settlementName(),
+                p.bio(), p.ratingAvg(),
+                s.booksTaken(), s.booksReturnedOnTime(), s.booksOverdue(), s.booksDamaged(), s.booksGiven(),
+                p.createdAt());
+    }
+
+    static UserMeResponse withStats(UserMeResponse p, UserStatsService.UserExchangeStats s) {
+        return new UserMeResponse(
+                p.id(), p.email(), p.name(), p.avatarUrl(), p.settlementType(), p.region(),
+                p.settlementName(), p.bio(), p.ratingAvg(),
+                s.booksTaken(), s.booksReturnedOnTime(), s.booksOverdue(), s.booksDamaged(), s.booksGiven(),
+                p.role(), p.status(), p.restrictedUntil(), p.createdAt());
     }
 
     private User findUserOrThrow(UUID userId) {

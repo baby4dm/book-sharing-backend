@@ -80,6 +80,12 @@ public class GlobalExceptionHandler {
     }
 
 
+    @ExceptionHandler(AccountRestrictedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ErrorResponse handleAccountRestricted(AccountRestrictedException ex) {
+        return ErrorResponse.of(ex.getMessage(), HttpStatus.FORBIDDEN.value());
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public ErrorResponse handleAccessDenied(AccessDeniedException ex) {

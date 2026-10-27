@@ -20,5 +20,15 @@ public enum NotificationType {
     NEW_CHAT_MESSAGE,
     NEW_COMMENT,
     REVIEW_RECEIVED,
-    FEEDBACK_RECEIVED
+    FEEDBACK_RECEIVED,
+    /** Модератор приховав оголошення користувача (referenceId — оголошення) */
+    LISTING_HIDDEN,
+    /** Модератор повернув оголошення в каталог (referenceId — оголошення) */
+    LISTING_RESTORED,
+    /** Модератор видалив пост або коментар користувача */
+    CONTENT_REMOVED,
+    /** Обліковий запис обмежено або заблоковано */
+    ACCOUNT_RESTRICTED,
+    /** Обмеження з облікового запису знято */
+    ACCOUNT_RESTORED
 }

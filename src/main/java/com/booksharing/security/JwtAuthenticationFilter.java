@@ -1,6 +1,7 @@
 package com.booksharing.security;
 
 import com.booksharing.entity.User;
+import com.booksharing.enums.UserStatus;
 import com.booksharing.repository.UserRepository;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -20,16 +21,6 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/**
- * Перевіряє заголовок {@code Authorization: Bearer <token>} на кожному
- * запиті до {@code /api/**}. Принципал у SecurityContext — повний
- * {@link User}, завантажений з БД, тому в контролерах можна писати
- * просто {@code @AuthenticationPrincipal User currentUser}.
- * <p>
- * MVP-варіант: користувач вантажиться з БД на кожен запит (без кешу).
- * Прийнятно для навчального обсягу навантаження; за потреби пізніше
- * можна додати кеш (Caffeine/Redis) без зміни контракту фільтра.
- */
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -50,16 +41,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Claims claims = jwtService.parseClaims(token);
                 UUID userId = UUID.fromString(claims.getSubject());
 
-                userRepository.findById(userId).ifPresent(user -> {
+                userRepository.findById(userId)
+                        .filter(user -> user.getStatus() != UserStatus.BLOCKED)
+                        .ifPresent(user -> {
                     var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
                     var authToken = new UsernamePasswordAuthenticationToken(user, null, authorities);
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 });
             } catch (JwtException | IllegalArgumentException ex) {
-                // невалідний/протермінований токен - просто не автентифікуємо;
-                // запит піде далі як анонімний і впаде на .authenticated() нижче,
-                // якщо ендпоінт цього вимагає
                 SecurityContextHolder.clearContext();
             }
         }

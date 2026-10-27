@@ -7,15 +7,6 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.domain.Specification;
 
-/**
- * Фільтр за способом доставки навмисно НЕ тут: {@code deliveryMethods} -
- * це {@code text[]}, а перевірка "чи містить масив значення" через
- * Criteria API для нативних Postgres-масивів не має чистого рішення без
- * додаткових бібліотек (та сама категорія проблем, що й з enum-масивами
- * раніше). Для MVP-масштабу даних {@link ListingService} фільтрує за
- * способом доставки вже в Java після вибірки з БД - прийнятно для
- * навчального обсягу, за потреби можна замінити на native query пізніше.
- */
 public final class ListingSpecifications {
 
     private ListingSpecifications() {
@@ -30,12 +21,6 @@ public final class ListingSpecifications {
         };
     }
 
-    /**
-     * IN-фільтр, не рівність - дозволяє обрати кілька жанрів одночасно
-     * (наприклад, "Фантастика" І "Фентезі" разом, логіка АБО між ними).
-     * cb.lower() з обох боків - регістронезалежне порівняння, як і було
-     * до переходу на мультивибір.
-     */
     public static Specification<Listing> hasGenre(List<String> genres) {
         return (root, query, cb) -> {
             if (genres == null || genres.isEmpty()) {
@@ -46,13 +31,6 @@ public final class ListingSpecifications {
         };
     }
 
-    /**
-     * Фільтрує за ЕФЕКТИВНим населеним пунктом - той самий COALESCE, що
-     * рахує {@link com.booksharing.mapper.ListingMapper} (власний override
-     * оголошення, якщо є, інакше - населений пункт власника). Інакше
-     * оголошення з override загубилось би у фільтрі за старим містом
-     * власника, хоча реально показується під новим.
-     */
     public static Specification<Listing> hasSettlement(List<String> settlementNames) {
         return (root, query, cb) -> {
             if (settlementNames == null || settlementNames.isEmpty()) {
@@ -77,15 +55,6 @@ public final class ListingSpecifications {
         };
     }
 
-    /**
-     * Ховає власні оголошення з каталогу - подати заявку на свою книгу
-     * все одно неможливо ({@link com.booksharing.service.RequestService#submit}
-     * відхиляє це окремою перевіркою), тому бачити її в загальній стрічці
-     * для пошуку/заявок сенсу немає. {@code excludedOwnerId} навмисно
-     * {@code null}-безпечний: для гостя (анонімного відвідувача без
-     * токена) фільтр просто не застосовується, бо виключати нічию книгу
-     * не потрібно.
-     */
     public static Specification<Listing> excludeOwner(UUID excludedOwnerId) {
         return (root, query, cb) -> {
             if (excludedOwnerId == null) {
@@ -95,8 +64,15 @@ public final class ListingSpecifications {
         };
     }
 
-    /** Протилежність до {@link #excludeOwner} - для "Моїх оголошень". */
     public static Specification<Listing> hasOwner(UUID ownerId) {
         return (root, query, cb) -> cb.equal(root.get("owner").get("id"), ownerId);
+    }
+
+    public static Specification<Listing> notHidden() {
+        return notHidden(true);
+    }
+
+    public static Specification<Listing> notHidden(boolean apply) {
+        return (root, query, cb) -> apply ? cb.isNull(root.get("hiddenAt")) : null;
     }
 }

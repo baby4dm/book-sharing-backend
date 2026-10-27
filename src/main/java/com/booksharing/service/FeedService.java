@@ -40,6 +40,7 @@ public class FeedService {
     private final PostLikeRepository postLikeRepository;
     private final NotificationService notificationService;
     private final FeedMapper feedMapper;
+    private final AccountGuard accountGuard;
 
     @Value("${app.backend.base-url}")
     private String backendBaseUrl;
@@ -70,6 +71,7 @@ public class FeedService {
 
     @Transactional
     public PostResponse createPost(User author, CreatePostRequest request) {
+        accountGuard.requireCanCreateContent(author.getId());
         String content = request.content().trim();
         if (content.isEmpty()) {
             throw new IllegalArgumentException("Текст поста не може бути порожнім");
@@ -124,6 +126,7 @@ public class FeedService {
 
     @Transactional
     public CommentResponse createComment(UUID postId, User author, CreateCommentRequest request) {
+        accountGuard.requireCanCreateContent(author.getId());
         Post post = findPostOrThrow(postId);
         String content = request.content().trim();
         if (content.isEmpty()) {

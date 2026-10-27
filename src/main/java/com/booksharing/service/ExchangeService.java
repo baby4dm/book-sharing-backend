@@ -42,6 +42,7 @@ public class ExchangeService {
     private final NotificationService notificationService;
     private final ExchangeNotifier exchangeNotifier;
     private final DisputeRepository disputeRepository;
+    private final UserStatsService userStatsService;
 
     @Transactional(readOnly = true)
     public ExchangeResponse getById(UUID id) {
@@ -635,13 +636,15 @@ public class ExchangeService {
     }
 
     private ExchangeParticipantResponse toParticipant(User user) {
+        // кількість обмінів — з реальних обмінів, а не зі збережених лічильників
+        UserStatsService.UserExchangeStats stats = userStatsService.statsFor(user);
         return new ExchangeParticipantResponse(
                 user.getId(),
                 user.getName(),
                 user.getAvatarUrl(),
                 user.getRatingAvg(),
-                user.getBooksGiven() == null ? 0 : user.getBooksGiven(),
-                user.getBooksTaken() == null ? 0 : user.getBooksTaken(),
-                user.getBooksOverdue() == null ? 0 : user.getBooksOverdue());
+                stats.booksGiven(),
+                stats.booksTaken(),
+                stats.booksOverdue());
     }
 }

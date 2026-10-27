@@ -35,4 +35,8 @@ public interface ExchangeRepository
     List<Exchange> findByListingIdOrderByCreatedAtDesc(UUID listingId);
 
     List<Exchange> findByReaderIdAndStatus(UUID readerId, ExchangeStatus status);
+
+    long countByOwnerIdAndStatus(UUID ownerId, ExchangeStatus status);
+
+    long countByReaderIdAndStatus(UUID readerId, ExchangeStatus status);
 }

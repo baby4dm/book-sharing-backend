@@ -2,6 +2,7 @@ package com.booksharing.security;
 
 import com.booksharing.common.exception.ResourceNotFoundException;
 import com.booksharing.entity.User;
+import com.booksharing.enums.UserStatus;
 import com.booksharing.repository.UserRepository;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,13 +16,6 @@ import org.springframework.security.web.authentication.AuthenticationSuccessHand
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
-/**
- * Спрацьовує і для Google OIDC-логіну (принципал - OidcUser, який теж
- * реалізує OAuth2User), і потенційно для інших OAuth2-провайдерів у
- * майбутньому. Шукає User за email напряму з БД - жоден кастомний
- * "localUserId"-атрибут більше не потрібен (OidcUser не дає чистого
- * способу такий атрибут прикріпити, на відміну від DefaultOAuth2User).
- */
 @Component
 public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccessHandler {
 
@@ -52,6 +46,15 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Користувача не знайдено після OAuth2-логіну: " + email));
+
+        if (user.getStatus() == UserStatus.BLOCKED) {
+            response.sendRedirect(UriComponentsBuilder.fromUriString(frontendBaseUrl)
+                    .path("/login")
+                    .queryParam("error", "blocked")
+                    .build()
+                    .toUriString());
+            return;
+        }
 
         String token = jwtService.generateToken(
                 user.getId(), user.getEmail(), List.of("ROLE_" + user.getRole().name()));

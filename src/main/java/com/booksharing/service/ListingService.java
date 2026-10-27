@@ -11,6 +11,7 @@ import com.booksharing.entity.ListingPhoto;
 import com.booksharing.mapper.ListingMapper;
 import com.booksharing.spec.ListingSpecifications;
 import com.booksharing.enums.ListingStatus;
+import com.booksharing.enums.UserRole;
 import com.booksharing.dto.req.UpdateListingRequest;
 import com.booksharing.repository.BookCatalogEntryRepository;
 import com.booksharing.entity.User;
@@ -38,9 +39,11 @@ public class ListingService {
     private final BookCatalogEntryRepository bookCatalogEntryRepository;
     private final UserRepository userRepository;
     private final ListingMapper listingMapper;
+    private final AccountGuard accountGuard;
 
     @Transactional
     public ListingResponse create(UUID ownerId, CreateListingRequest request) {
+        accountGuard.requireCanCreateContent(ownerId);
         User owner = userRepository.findById(ownerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Користувача не знайдено: " + ownerId));
         BookCatalogEntry book = bookCatalogEntryRepository.findById(request.bookCatalogEntryId())
@@ -70,8 +73,16 @@ public class ListingService {
     }
 
     @Transactional(readOnly = true)
-    public ListingResponse getById(UUID id) {
+    public ListingResponse getById(UUID id, User viewer) {
         Listing listing = findListingOrThrow(id);
+        if (listing.isHidden()) {
+            boolean isOwner = viewer != null && listing.getOwner().getId().equals(viewer.getId());
+            boolean isModerator = viewer != null
+                    && (viewer.getRole() == UserRole.MODERATOR || viewer.getRole() == UserRole.ADMIN);
+            if (!isOwner && !isModerator) {
+                throw new ResourceNotFoundException("Оголошення не знайдено: " + id);
+            }
+        }
         return listingMapper.toResponse(listing, photoUrlsOf(id));
     }
 
@@ -84,7 +95,8 @@ public class ListingService {
                 .and(ListingSpecifications.hasGenre(genre))
                 .and(ListingSpecifications.hasSettlement(city))
                 .and(ListingSpecifications.matchesSearch(searchText))
-                .and(ListingSpecifications.excludeOwner(excludeOwnerId));
+                .and(ListingSpecifications.excludeOwner(excludeOwnerId))
+                .and(ListingSpecifications.notHidden());
 
         return findFiltered(spec, deliveryMethod, pageable);
     }
@@ -93,8 +105,16 @@ public class ListingService {
     public Page<ListingResponse> getMyListings(UUID ownerId, List<String> genre, List<String> city,
                                                List<String> deliveryMethod, List<ListingStatus> status,
                                                String searchText, Pageable pageable) {
+        return getByOwner(ownerId, genre, city, deliveryMethod, status, searchText, true, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ListingResponse> getByOwner(UUID ownerId, List<String> genre, List<String> city,
+                                            List<String> deliveryMethod, List<ListingStatus> status,
+                                            String searchText, boolean includeHidden, Pageable pageable) {
         Specification<Listing> spec = Specification
                 .where(ListingSpecifications.hasOwner(ownerId))
+                .and(ListingSpecifications.notHidden(!includeHidden))
                 .and(ListingSpecifications.hasStatus(status))
                 .and(ListingSpecifications.hasGenre(genre))
                 .and(ListingSpecifications.hasSettlement(city))
@@ -110,9 +130,6 @@ public class ListingService {
                     .map(l -> listingMapper.toResponse(l, photoUrlsOf(l.getId())));
         }
 
-        // "будь-який з обраних" - оголошення проходить, якщо підтримує
-        // ХОЧА Б ОДИН із вибраних способів доставки (логіка АБО, не
-        // "точно всі обрані одночасно")
         List<Listing> filtered = listingRepository.findAll(spec, pageable.getSort()).stream()
                 .filter(l -> deliveryMethod.stream().anyMatch(dm -> l.getDeliveryMethods().contains(dm)))
                 .toList();

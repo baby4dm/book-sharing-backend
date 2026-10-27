@@ -30,16 +30,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.dialect.type.PostgreSQLEnumJdbcType;
 import org.hibernate.type.SqlTypes;
 
-/**
- * Оголошення про конкретний примірник книги (не сама книга — довідкові дані
- * про книгу описує {@link BookCatalogEntry}). Мапиться на таблицю
- * {@code listings} (01-init-db.sql).
- * <p>
- * {@code deliveryMethods} зберігається як Postgres {@code text[]} з
- * CHECK-обмеженням у БД (а не нативний масив enum — див. коментар у
- * {@link DeliveryMethod}). Валідність значень (тільки "PICKUP"/"MAIL")
- * контролюється на рівні сервісу через enum {@link DeliveryMethod}.
- */
+
 @Entity
 @Table(name = "listings")
 @Getter
@@ -65,13 +56,6 @@ public class Listing {
     @Column(name = "condition_description", columnDefinition = "text")
     private String conditionDescription;
 
-    /**
-     * Опційний override локації - усі три поля nullable. {@code null}
-     * означає "використовувати населений пункт із профілю власника";
-     * заповнене - власник явно вказав ІНШЕ місце саме для цього
-     * оголошення (книга в іншому місті, тимчасове перебування тощо).
-     * Обчислення "ефективної" локації - у {@link com.booksharing.mapper.ListingMapper}.
-     */
     @Enumerated(EnumType.STRING)
     @JdbcType(PostgreSQLEnumJdbcType.class)
     @Column(name = "settlement_type", columnDefinition = "settlement_type")
@@ -93,6 +77,16 @@ public class Listing {
     @Builder.Default
     private ListingStatus status = ListingStatus.AVAILABLE;
 
+    @Column(name = "hidden_at")
+    private LocalDateTime hiddenAt;
+
+    @Column(name = "hidden_reason", columnDefinition = "text")
+    private String hiddenReason;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "hidden_by")
+    private User hiddenBy;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -100,4 +94,8 @@ public class Listing {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    public boolean isHidden() {
+        return hiddenAt != null;
+    }
 }

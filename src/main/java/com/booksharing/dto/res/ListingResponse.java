@@ -9,18 +9,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Сплющений DTO: власник і довідкові дані книги вкладені прямо в
- * оголошення, щоб фронтенд не робив додаткових запитів для стрічки.
- * {@code photoUrls} підвантажується сервісом окремо (у {@code Listing}
- * немає навігаційної колекції на {@code ListingPhoto} — див. коментар
- * у {@link ListingMapper}).
- * <p>
- * {@code settlementType}/{@code region}/{@code settlementName} - це
- * ЕФЕКТИВНА локація (власний override оголошення, якщо є, інакше -
- * населений пункт власника) - {@link ListingMapper} рахує це один раз,
- * фронтенду не потрібно знати про існування override взагалі.
- */
 public record ListingResponse(
         UUID id,
         UUID ownerId,
@@ -40,5 +28,8 @@ public record ListingResponse(
         ListingStatus status,
         List<String> photoUrls,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt) {
+        LocalDateTime updatedAt,
+        // != null — оголошення приховане модератором (бачать лише власник і модератори)
+        LocalDateTime hiddenAt,
+        String hiddenReason) {
 }

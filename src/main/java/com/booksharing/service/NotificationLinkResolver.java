@@ -78,7 +78,10 @@ public class NotificationLinkResolver {
             }
             case NEW_COMMENT -> "/feed";
             case REVIEW_RECEIVED -> "/profile";
-            case FEEDBACK_RECEIVED -> "/moderation/feedback";
+            case FEEDBACK_RECEIVED -> "/moderation?tab=feedback";
+            case LISTING_HIDDEN, LISTING_RESTORED -> ref == null ? "/?tab=my" : "/listings/" + ref;
+            case CONTENT_REMOVED -> "/feed";
+            case ACCOUNT_RESTRICTED, ACCOUNT_RESTORED -> "/profile";
             case NEW_CHAT_MESSAGE -> ref == null ? "/chat" : "/chat/" + ref;
             default -> null;
         };
