@@ -7,5 +7,6 @@ public record ModerationUserDetailResponse(
         List<RestrictionResponse> restrictions,
         List<ModerationActionResponse> actions,
         long disputesFiled,
-        long disputesAgainst) {
+        long disputesAgainst,
+        List<String> moderatorBlockers) {
 }

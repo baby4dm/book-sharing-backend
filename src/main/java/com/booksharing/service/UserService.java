@@ -8,6 +8,7 @@ import com.booksharing.dto.req.UpdateUserProfileRequest;
 import com.booksharing.dto.res.UserMeResponse;
 import com.booksharing.dto.res.UserPublicProfileResponse;
 import com.booksharing.entity.User;
+import com.booksharing.enums.UserRole;
 import com.booksharing.mapper.UserMapper;
 import com.booksharing.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +26,11 @@ public class UserService {
     @Transactional(readOnly = true)
     public UserPublicProfileResponse getPublicProfile(UUID userId) {
         User user = findUserOrThrow(userId);
-        return withStats(userMapper.toPublicProfile(user), userStatsService.statsFor(user));
+        UserPublicProfileResponse profile = userMapper.toPublicProfile(user);
+        if (user.getRole() != UserRole.USER) {
+            return staffProfile(profile);
+        }
+        return withStats(profile, userStatsService.statsFor(user));
     }
 
     @Transactional(readOnly = true)
@@ -47,7 +52,14 @@ public class UserService {
                 p.id(), p.name(), p.avatarUrl(), p.settlementType(), p.region(), p.settlementName(),
                 p.bio(), p.ratingAvg(),
                 s.booksTaken(), s.booksReturnedOnTime(), s.booksOverdue(), s.booksDamaged(), s.booksGiven(),
-                p.createdAt());
+                p.createdAt(), p.role());
+    }
+
+    static UserPublicProfileResponse staffProfile(UserPublicProfileResponse p) {
+        return new UserPublicProfileResponse(
+                p.id(), p.name(), p.avatarUrl(), null, null, null,
+                p.bio(), null, null, null, null, null, null,
+                p.createdAt(), p.role());
     }
 
     static UserMeResponse withStats(UserMeResponse p, UserStatsService.UserExchangeStats s) {

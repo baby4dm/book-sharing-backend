@@ -39,4 +39,6 @@ public interface ExchangeRepository
     long countByOwnerIdAndStatus(UUID ownerId, ExchangeStatus status);
 
     long countByReaderIdAndStatus(UUID readerId, ExchangeStatus status);
+
+    long countByOwnerIdOrReaderId(UUID ownerId, UUID readerId);
 }

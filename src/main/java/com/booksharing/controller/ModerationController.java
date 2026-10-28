@@ -1,5 +1,6 @@
 package com.booksharing.controller;
 
+import com.booksharing.dto.req.ChangeRoleRequest;
 import com.booksharing.dto.req.LiftRestrictionRequest;
 import com.booksharing.dto.req.ModerationReasonRequest;
 import com.booksharing.dto.req.ResolveDisputeRequest;
@@ -33,11 +34,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Панель модератора. Увесь контролер доступний лише {@code MODERATOR}/{@code ADMIN}
- * ({@code @PreAuthorize} на класі); рішення по скарзі додатково захищене
- * {@code @PreAuthorize} у {@link DisputeService}.
- */
+
 @RestController
 @RequestMapping("/api/moderation")
 @RequiredArgsConstructor
@@ -52,9 +49,7 @@ public class ModerationController {
         return moderationService.summary();
     }
 
-    // ---- скарги
 
-    /** {@code status=OPEN} (за замовчуванням) — відкриті, {@code RESOLVED} — останні розглянуті. */
     @GetMapping("/disputes")
     public List<ModerationDisputeResponse> listDisputes(
             @RequestParam(defaultValue = "OPEN") String status) {
@@ -74,7 +69,6 @@ public class ModerationController {
         return disputeService.resolve(id, currentUser.getId(), request);
     }
 
-    // ---- користувачі
 
     @GetMapping("/users")
     public Page<ModerationUserResponse> searchUsers(
@@ -106,7 +100,15 @@ public class ModerationController {
         return moderationService.liftRestriction(currentUser.getId(), id, request);
     }
 
-    // ---- оголошення
+    @PatchMapping("/users/{id}/role")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ModerationUserDetailResponse changeRole(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody ChangeRoleRequest request) {
+        return moderationService.changeRole(currentUser.getId(), id, request);
+    }
+
 
     @GetMapping("/listings/hidden")
     public Page<ListingResponse> hiddenListings(
@@ -130,7 +132,6 @@ public class ModerationController {
         return moderationService.restoreListing(currentUser.getId(), id);
     }
 
-    // ---- пости й коментарі (тіло з причиною, тому POST, а не DELETE)
 
     @PostMapping("/posts/{id}/delete")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -150,9 +151,7 @@ public class ModerationController {
         moderationService.deleteComment(currentUser.getId(), id, request);
     }
 
-    // ---- журнал
 
-    /** {@code scope=content} — лише оголошення, пости й коментарі; інакше всі дії. */
     @GetMapping("/actions")
     public Page<ModerationActionResponse> actions(
             @RequestParam(defaultValue = "all") String scope,

@@ -1,6 +1,7 @@
 package com.booksharing.service;
 
 import com.booksharing.common.exception.ResourceNotFoundException;
+import com.booksharing.dto.req.ChangeRoleRequest;
 import com.booksharing.dto.req.LiftRestrictionRequest;
 import com.booksharing.dto.req.ModerationReasonRequest;
 import com.booksharing.dto.req.RestrictUserRequest;
@@ -68,6 +69,7 @@ public class ModerationService {
     private final PostRepository postRepository;
     private final CommentRepository commentRepository;
     private final ModerationActionRepository moderationActionRepository;
+    private final StaffRoleService staffRoleService;
     private final ModerationLogService moderationLog;
     private final NotificationService notificationService;
     private final UserStatsService userStatsService;
@@ -136,7 +138,8 @@ public class ModerationService {
                 restrictions,
                 actions,
                 disputeRepository.countByFiledById(userId),
-                disputeRepository.countAgainstUser(userId));
+                disputeRepository.countAgainstUser(userId),
+                staffRoleService.moderatorBlockers(user));
     }
 
     @Transactional
@@ -216,6 +219,48 @@ public class ModerationService {
                 "Модератор зняв обмеження з вашого облікового запису");
         moderationLog.log(moderator, ModerationActionType.LIFT_RESTRICTION,
                 ModerationTargetType.USER, user.getId(), user, reason, null);
+
+        return getUser(userId);
+    }
+
+    @Transactional
+    public ModerationUserDetailResponse changeRole(UUID adminId, UUID userId, ChangeRoleRequest request) {
+        User admin = findUser(adminId);
+        User user = findUser(userId);
+        UserRole target = request.role();
+
+        if (user.getId().equals(adminId)) {
+            throw new IllegalStateException("Не можна змінити власну роль");
+        }
+        if (target == UserRole.ADMIN || user.getRole() == UserRole.ADMIN) {
+            throw new IllegalStateException("Роль адміністратора змінюється лише в базі даних");
+        }
+        if (user.getRole() == target) {
+            return getUser(userId);
+        }
+
+        if (target == UserRole.MODERATOR) {
+            List<String> blockers = staffRoleService.moderatorBlockers(user);
+            if (!blockers.isEmpty()) {
+                throw new IllegalStateException("Модератором може стати лише новий обліковий запис без книг, "
+                        + "заявок і обмінів. У цього користувача: " + String.join(", ", blockers));
+            }
+        }
+
+        user.setRole(target);
+        userRepository.save(user);
+
+        boolean granted = target == UserRole.MODERATOR;
+        notificationService.notify(
+                user,
+                granted ? NotificationType.MODERATOR_GRANTED : NotificationType.MODERATOR_REVOKED,
+                null,
+                granted
+                        ? "Вам надано роль модератора. Панель модерації — у навігації"
+                        : "Роль модератора знято. Тепер ви можете ділитися книгами як усі");
+        moderationLog.log(admin,
+                granted ? ModerationActionType.GRANT_MODERATOR : ModerationActionType.REVOKE_MODERATOR,
+                ModerationTargetType.USER, user.getId(), user, null, null);
 
         return getUser(userId);
     }

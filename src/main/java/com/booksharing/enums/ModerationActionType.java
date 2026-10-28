@@ -8,5 +8,7 @@ public enum ModerationActionType {
     DELETE_COMMENT,
     RESTRICT_USER,
     BLOCK_USER,
-    LIFT_RESTRICTION
+    LIFT_RESTRICTION,
+    GRANT_MODERATOR,
+    REVOKE_MODERATOR
 }

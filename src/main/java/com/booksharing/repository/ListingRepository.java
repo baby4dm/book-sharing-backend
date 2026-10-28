@@ -24,6 +24,8 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>,
 
     long countByHiddenAtIsNotNull();
 
+    long countByOwnerId(UUID ownerId);
+
 
     @Query(value = "SELECT DISTINCT COALESCE(l.settlement_name, u.settlement_name) "
             + "FROM listings l JOIN users u ON l.owner_id = u.id "

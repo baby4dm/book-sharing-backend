@@ -3,6 +3,7 @@ package com.booksharing.service;
 import com.booksharing.common.exception.AccountRestrictedException;
 import com.booksharing.common.exception.ResourceNotFoundException;
 import com.booksharing.entity.User;
+import com.booksharing.enums.UserRole;
 import com.booksharing.enums.UserStatus;
 import com.booksharing.repository.UserRepository;
 import java.time.LocalDateTime;
@@ -21,10 +22,21 @@ public class AccountGuard {
 
     private final UserRepository userRepository;
 
+    public static final String STAFF_FORBIDDEN =
+            "Модератори не створюють оголошення, заявки й дописи — лише модерують";
+
+    public void requireRegularUser(User user) {
+        if (user.getRole() != UserRole.USER) {
+            throw new AccountRestrictedException(STAFF_FORBIDDEN);
+        }
+    }
+
     @Transactional
     public void requireCanCreateContent(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Користувача не знайдено: " + userId));
+
+        requireRegularUser(user);
 
         if (user.getStatus() == UserStatus.BLOCKED) {
             throw new AccountRestrictedException("Обліковий запис заблоковано модератором");

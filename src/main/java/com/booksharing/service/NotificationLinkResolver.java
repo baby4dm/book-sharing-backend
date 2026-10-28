@@ -81,7 +81,8 @@ public class NotificationLinkResolver {
             case FEEDBACK_RECEIVED -> "/moderation?tab=feedback";
             case LISTING_HIDDEN, LISTING_RESTORED -> ref == null ? "/?tab=my" : "/listings/" + ref;
             case CONTENT_REMOVED -> "/feed";
-            case ACCOUNT_RESTRICTED, ACCOUNT_RESTORED -> "/profile";
+            case ACCOUNT_RESTRICTED, ACCOUNT_RESTORED, MODERATOR_REVOKED -> "/profile";
+            case MODERATOR_GRANTED -> "/moderation";
             case NEW_CHAT_MESSAGE -> ref == null ? "/chat" : "/chat/" + ref;
             default -> null;
         };

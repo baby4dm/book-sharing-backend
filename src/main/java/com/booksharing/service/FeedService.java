@@ -103,6 +103,7 @@ public class FeedService {
 
     @Transactional
     public PostLikeResponse likePost(UUID postId, User currentUser) {
+        accountGuard.requireRegularUser(currentUser);
         findPostOrThrow(postId);
         postLikeRepository.insertIfAbsent(postId, currentUser.getId());
         return new PostLikeResponse(postId, postLikeRepository.countByPostId(postId), true);

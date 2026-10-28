@@ -26,4 +26,6 @@ public interface RequestRepository extends JpaRepository<Request, UUID>, JpaSpec
     @EntityGraph(attributePaths = {
             "listing", "listing.bookCatalogEntry", "listing.owner", "requester"})
     Page<Request> findAll(Specification<Request> spec, Pageable pageable);
+
+    long countByRequesterId(UUID requesterId);
 }
