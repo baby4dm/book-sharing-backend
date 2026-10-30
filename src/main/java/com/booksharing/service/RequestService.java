@@ -167,10 +167,10 @@ public class RequestService {
         }
 
         Listing listing = request.getListing();
-        boolean hasActive = requestRepository.findByListingIdAndStatus(listing.getId(), RequestStatus.ACTIVE)
-                .isPresent();
-        if (hasActive) {
-            throw new IllegalStateException("На це оголошення вже є активна заявка");
+        boolean bookInExchange = exchangeRepository.existsByListingIdAndStatusNot(
+                listing.getId(), ExchangeStatus.COMPLETED);
+        if (bookInExchange) {
+            throw new IllegalStateException("Книга зараз в іншому обміні. Схвалити нову заявку можна після його завершення");
         }
 
         request.setStatus(RequestStatus.ACTIVE);
